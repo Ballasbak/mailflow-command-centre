@@ -4,6 +4,39 @@ import { measureContentHeight, createHeightController, forceEagerImages } from '
 import { forwardIframeKeydown } from '../utils/iframeKeys.js';
 import { remoteLoadsCsp } from '../utils/remoteImagePolicy.js';
 
+// The theme's colors for a body shown dark (#228). They come from CSS variables that an admin's
+// custom CSS can redefine, and they are written into the frame's stylesheet, so only a plain
+// color value is taken; anything else falls back to the default dark theme's.
+const COLOR_VALUE = /^(#[0-9a-f]{3,8}|rgba?\(\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*(,\s*[\d.]+%?\s*)?\))$/i;
+const DARK_DEFAULTS = { background: '#0f0f11', text: '#e8e8f0', link: '#8b7cf8', muted: '#9a9ab0', border: '#2a2a35' };
+// The background the body actually shows, once its CSS applied: the sender's own when their dark
+// design sets one. A computed color is always rgb()/rgba(), so it is safe to hand to a style.
+export function frameSurface(doc) {
+  try {
+    const shown = (el) => {
+      const color = el && doc.defaultView.getComputedStyle(el).backgroundColor;
+      return color && color !== 'transparent' && !/^rgba\(.*,\s*0\)$/.test(color) ? color : null;
+    };
+    return shown(doc.body) || shown(doc.documentElement);
+  } catch { return null; }
+}
+
+function darkPalette() {
+  const read = (name, fallback) => {
+    try {
+      const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return COLOR_VALUE.test(value) ? value : fallback;
+    } catch { return fallback; }
+  };
+  return {
+    background: read('--bg-primary', DARK_DEFAULTS.background),
+    text: read('--text-primary', DARK_DEFAULTS.text),
+    link: read('--accent', DARK_DEFAULTS.link),
+    muted: read('--text-secondary', DARK_DEFAULTS.muted),
+    border: read('--border', DARK_DEFAULTS.border),
+  };
+}
+
 // The email body, rendered in its own sandboxed frame.
 //
 // Extracted from MessagePane so a conversation view can mount one per expanded message
@@ -16,11 +49,16 @@ import { remoteLoadsCsp } from '../utils/remoteImagePolicy.js';
 //
 // The experimental div renderer (VITE_EMAIL_DIV_RENDER) is deliberately NOT here: it is off
 // by default and untested, and moving it would double the size of this change.
-function MessageBodyView({ body, messageId, emailScaleRef, hasNativeContextTarget, onContextMenu, iframeRef }) {
+function MessageBodyView({ body, messageId, emailScaleRef, hasNativeContextTarget, onContextMenu, iframeRef, dark = false, onSurface }) {
   const { t } = useTranslation();
   // Holds the ResizeObserver watching the frame's document, so the effect can disconnect the
   // previous one before observing a new document.
   const roRef = useRef(null);
+  // Tells the card around the frame what background the body shows when it is dark, so a sender's
+  // own dark background does not sit inside a strip of the theme's (#228). Kept in a ref so a new
+  // callback from the parent does not re-run the frame's setup.
+  const onSurfaceRef = useRef(onSurface);
+  useEffect(() => { onSurfaceRef.current = onSurface; });
 
   useEffect(() => {
     const iframe = iframeRef.current;
@@ -75,6 +113,7 @@ function MessageBodyView({ body, messageId, emailScaleRef, hasNativeContextTarge
       initialisedDoc = doc;
 
       emailScaleRef.current = 1; // reset for each new email
+      onSurfaceRef.current?.(dark ? frameSurface(doc) : null);
 
       // Start every image fetching now, rather than letting the browser defer them.
       //
@@ -313,27 +352,35 @@ function MessageBodyView({ body, messageId, emailScaleRef, hasNativeContextTarge
       iframe.removeEventListener('load', onLoaded);
       emailScaleRef.current = 1;
     };
-  }, [body?.html, messageId, hasNativeContextTarget, onContextMenu, emailScaleRef, iframeRef]);
+  }, [body?.html, messageId, hasNativeContextTarget, onContextMenu, emailScaleRef, iframeRef, dark]);
+
+  // Shown dark: the theme's colors, with the sender's own dark design (body.darkCss) after
+  // MailFlow's styles so it wins where it sets something; MailFlow's dark background is not
+  // !important for the same reason. Shown as sent: forced light, as every body was before (#228).
+  // The CSS comes from inside a style element, so it cannot close one; refuse it if it ever does.
+  const palette = dark ? darkPalette() : null;
+  const darkCss = dark && typeof body.darkCss === 'string' && !/<\/style/i.test(body.darkCss) ? body.darkCss : '';
+  const html = body.html;
 
   return (
     <iframe
       ref={iframeRef}
       srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
-      <meta name="color-scheme" content="only light">
+      <meta name="color-scheme" content="${dark ? 'dark' : 'only light'}">
       <meta http-equiv="Content-Security-Policy" content="script-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; style-src 'unsafe-inline';${remoteLoadsCsp(body.remoteImagesBlocked)}">
       <base target="_blank">
     </head><body><div id="mf-scale-wrapper">${
-      body.html.replace(/<a(\s)/gi, '<a rel="noopener noreferrer"$1')
+      html.replace(/<a(\s)/gi, '<a rel="noopener noreferrer"$1')
     }</div><style>
         /* Injected AFTER email HTML so our rules win the source-order tiebreak
            for same-specificity !important declarations inside the email's own
            <style> blocks (which land in <body> after the email HTML). */
         html, body { height: auto !important; min-height: 0 !important; overflow: hidden !important; }
         body { margin: 0 !important; padding: 0 !important;
-               background-color: #ffffff !important; color-scheme: light;
+               background-color: ${dark ? palette.background : '#ffffff !important'}; color-scheme: ${dark ? 'dark' : 'light'};
                font-family: -apple-system, Arial, sans-serif;
-               font-size: 14px; line-height: 1.6; color: #1a1a1a;
+               font-size: 14px; line-height: 1.6; color: ${dark ? palette.text : '#1a1a1a'};
                word-wrap: break-word; overflow-wrap: break-word; }
         img { max-width: 100% !important; height: auto !important; }
         /* Force top-level wrapper tables to fill the viewport. Selectors cover
@@ -350,10 +397,10 @@ function MessageBodyView({ body, messageId, emailScaleRef, hasNativeContextTarge
         td, th { min-width: 0 !important; }
         td { word-break: break-word; }
         th { overflow-wrap: normal; word-break: normal; }
-        a { color: #6366f1; }
+        a { color: ${dark ? palette.link : '#6366f1'}; }
         pre, code { overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
-        blockquote { border-left: 3px solid #ddd; margin: 0; padding-left: 12px; color: #555; }
-      </style></body></html>`}
+        blockquote { border-left: 3px solid ${dark ? palette.border : '#ddd'}; margin: 0; padding-left: 12px; color: ${dark ? palette.muted : '#555'}; }
+      </style>${darkCss ? `<style>${darkCss}</style>` : ''}</body></html>`}
       scrolling="no"
       style={{ width: '1px', minWidth: '100%', border: 'none', display: 'block', height: '300px' }}
       sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"

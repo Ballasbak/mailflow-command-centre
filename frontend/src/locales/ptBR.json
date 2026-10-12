@@ -241,6 +241,8 @@
     "delete": "Excluir",
     "downloadEml": "Baixar como .eml",
     "print": "Imprimir",
+    "showDark": "Mostrar em cores escuras",
+    "showOriginal": "Mostrar cores originais",
     "printConversation": "Imprimir conversa",
     "preparingPrint": "Preparando impressão…",
     "more": "Mais",
@@ -989,6 +991,8 @@
     "appearance": {
       "title": "Aparência",
       "description": "Escolha um tema de cores para a interface",
+      "darkEmailBodies": "Corpo do e-mail escuro",
+      "darkEmailBodiesDesc": "Em um tema escuro, mostra em cores escuras as mensagens em texto simples e os e-mails que têm seu próprio design escuro. Os outros e-mails ficam como foram enviados, e cada mensagem pode ser alternada individualmente.",
       "typography": "Tipografia",
       "typographyDescription": "Escolha uma combinação de fontes para a interface",
       "typographyLoading": "Carregando fontes…",

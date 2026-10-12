@@ -241,6 +241,8 @@
     "delete": "Delete",
     "downloadEml": "Download .eml",
     "print": "Print",
+    "showDark": "Show in dark colors",
+    "showOriginal": "Show original colors",
     "printConversation": "Print conversation",
     "preparingPrint": "Preparing to print…",
     "more": "More",
@@ -989,6 +991,8 @@
     "appearance": {
       "title": "Appearance",
       "description": "Choose a color theme for the interface",
+      "darkEmailBodies": "Dark email bodies",
+      "darkEmailBodiesDesc": "In a dark theme, show plain-text messages, and emails that come with their own dark design, in dark colors. Other emails stay as sent, and any message can be switched on its own.",
       "typography": "Typography",
       "typographyDescription": "Choose a font pairing for the interface",
       "typographyLoading": "Loading fonts…",

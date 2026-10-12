@@ -241,6 +241,8 @@
     "delete": "Supprimer",
     "downloadEml": "Télécharger en .eml",
     "print": "Imprimer",
+    "showDark": "Afficher en couleurs sombres",
+    "showOriginal": "Afficher les couleurs d'origine",
     "printConversation": "Imprimer la conversation",
     "preparingPrint": "Préparation de l'impression…",
     "more": "Plus",
@@ -989,6 +991,8 @@
     "appearance": {
       "title": "Apparence",
       "description": "Choisissez un thème de couleur pour l'interface",
+      "darkEmailBodies": "Corps des e-mails sombres",
+      "darkEmailBodiesDesc": "Avec un thème sombre, afficher en couleurs sombres les messages en texte brut et les e-mails qui ont leur propre version sombre. Les autres e-mails restent tels qu'envoyés, et chaque message peut être basculé individuellement.",
       "typography": "Typographie",
       "typographyDescription": "Choisissez une combinaison de polices pour l'interface",
       "typographyLoading": "Chargement des polices…",

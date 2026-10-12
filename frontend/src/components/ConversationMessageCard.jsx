@@ -11,6 +11,7 @@ import { buildPrintDocument, openPrintWindow, printInWindow } from '../utils/pri
 import { openReplyFromMessage, openForwardFromMessage } from '../utils/composeFromMessage.js';
 import { shortcutBus } from '../utils/shortcutBus.js';
 import MessageBodyView from './MessageBodyView.jsx';
+import { isDarkTheme, canShowDark, showDark } from '../utils/darkScheme.js';
 import AiResultBox from './AiResultBox.jsx';
 import { useAiActions } from '../hooks/useAiActions.js';
 import { BUILTIN_SUMMARIZE } from '../aiActions.js';
@@ -50,6 +51,14 @@ export default function ConversationMessageCard({ message, expanded, onToggle, o
   const adjustCategoryCount = useStore(s => s.adjustCategoryCount);
   const [body, setBody] = useState(null);
   const [error, setError] = useState(null);
+  // Dark email bodies (#228): the setting, and this card's own choice made with its toggle.
+  const theme = useStore(s => s.theme);
+  const darkEmailBodies = useStore(s => s.darkEmailBodies);
+  const [darkChoice, setDarkChoice] = useState(undefined);
+  // The background the frame's body shows when dark (see MessageBodyView onSurface).
+  const [frameSurface, setFrameSurface] = useState(null);
+  const bodyDark = showDark({ body, themeKey: theme, setting: darkEmailBodies, override: darkChoice });
+  const darkToggleShown = isDarkTheme(theme) && canShowDark(body);
   const [loading, setLoading] = useState(false);
   const iframeRef = useRef(null);
   const emailScaleRef = useRef(1);
@@ -264,14 +273,18 @@ export default function ConversationMessageCard({ message, expanded, onToggle, o
             // same card the reading pane already gives them.
             <div className="msg-card" style={{
               padding: '14px 16px 12px',
-              background: 'white',
+              // The frame's own background, so the card and the body read as one surface: the
+              // sender's dark background where their design sets one, otherwise the theme's.
+              background: bodyDark ? (frameSurface || 'var(--bg-primary)') : 'white',
               borderRadius: 4,
-              border: '1px solid var(--border-subtle)',
+              border: bodyDark ? 'none' : '1px solid var(--border-subtle)',
               overflow: 'hidden',
             }}>
               <MessageBodyView
                 iframeRef={iframeRef}
                 body={body}
+                dark={bodyDark}
+                onSurface={setFrameSurface}
                 messageId={message.id}
                 emailScaleRef={emailScaleRef}
                 hasNativeContextTarget={false}
@@ -282,7 +295,15 @@ export default function ConversationMessageCard({ message, expanded, onToggle, o
           {!body?.html && body?.text && (
             // translate="yes" undoes <body>'s translate="no" for the message itself; React writes
             // it as the element's whole text, so a translator has no React text node to break.
-            <div translate="yes" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{body.text}</div>
+            <div translate="yes" style={{
+              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              // Plain text follows a dark theme; switched to its original colors it gets the
+              // reading pane's white card (#228). A light theme leaves it as it always was.
+              ...(darkToggleShown && !bodyDark ? {
+                padding: '14px 16px 12px', background: 'white', color: '#1a1a1a',
+                borderRadius: 4, border: '1px solid var(--border-subtle)',
+              } : {}),
+            }}>{body.text}</div>
           )}
 
           {/* Reply and forward are per message, not per thread: replying to a conversation
@@ -306,6 +327,11 @@ export default function ConversationMessageCard({ message, expanded, onToggle, o
               <CardBtn onClick={handleMarkUnread}>{t('contextMenu.markUnread')}</CardBtn>
             )}
             <CardBtn onClick={handlePrint}>{t('message.print')}</CardBtn>
+            {darkToggleShown && (
+              <CardBtn onClick={() => setDarkChoice(bodyDark ? 'original' : 'dark')}>
+                {bodyDark ? t('message.showOriginal') : t('message.showDark')}
+              </CardBtn>
+            )}
             <CardBtn onClick={() => downloadEml(message.id)}>{t('message.downloadEml')}</CardBtn>
             {aiEnabled && body && (
               <div style={{ position: 'relative' }}>

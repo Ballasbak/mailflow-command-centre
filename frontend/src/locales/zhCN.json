@@ -241,6 +241,8 @@
     "delete": "删除",
     "downloadEml": "下载为 .eml",
     "print": "打印",
+    "showDark": "以深色显示",
+    "showOriginal": "显示原始颜色",
     "printConversation": "打印会话",
     "preparingPrint": "正在准备打印…",
     "more": "更多",
@@ -989,6 +991,8 @@
     "appearance": {
       "title": "外观",
       "description": "为界面选择一种配色主题",
+      "darkEmailBodies": "深色邮件正文",
+      "darkEmailBodiesDesc": "在深色主题中，以深色显示纯文本邮件和自带深色设计的邮件。其他邮件保持原样，每封邮件都可以单独切换。",
       "typography": "字体排版",
       "typographyDescription": "为界面选择一种字体搭配方案",
       "typographyLoading": "加载字体中…",

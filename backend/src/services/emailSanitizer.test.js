@@ -10,6 +10,8 @@ import {
   blockRemoteImages,
   rewriteEbayImageserUrls,
   rewriteAnchorHrefs,
+  withoutDarkScheme,
+  splitDarkScheme,
 } from './emailSanitizer.js';
 
 // ── stripEmailHead ─────────────────────────────────────────────────────────
@@ -329,9 +331,42 @@ describe('sanitizeEmail — CSS upgrades', () => {
 });
 
 describe('sanitizeEmail — dark-mode CSS', () => {
-  it('removes prefers-color-scheme: dark media blocks and keeps other media queries', () => {
+  // #228: the sender's dark design is kept, switched off, for the reader to switch on when it
+  // renders the message dark. It must never apply on the light page, as it did in May.
+  it('moves prefers-color-scheme: dark blocks into a switched-off style and keeps other media queries', () => {
     const out = sanitizeEmail('<style>@media screen and (max-width:600px){.col{width:100%}}.a{b:c}@media (prefers-color-scheme: dark){.a{b:d}.x{y:z}}.e{f:g}</style><p>x</p>');
-    expect(out).toBe('<style>@media screen and (max-width:600px){.col{width:100%}}.a{b:c}.e{f:g}</style><p>x</p>');
+    expect(out).toBe('<style>@media screen and (max-width:600px){.col{width:100%}}.a{b:c}.e{f:g}</style><p>x</p>'
+      + '<style data-mf-dark-scheme media="not all">@media (min-width: 0px){.a{b:d}.x{y:z}}</style>');
+  });
+
+  it("keeps a dark block's other conditions, and collects every block into one style", () => {
+    const out = sanitizeEmail('<style>@media (prefers-color-scheme: dark) and (max-width: 600px){.a{color:#fff}}</style>'
+      + '<p>y</p><style>@media screen and (prefers-color-scheme:dark){.b{color:#eee}}</style>');
+    expect(out).toBe('<style></style><p>y</p><style></style><style data-mf-dark-scheme media="not all">'
+      + '@media (min-width: 0px) and (max-width: 600px){.a{color:#fff}}\n@media screen and (min-width: 0px){.b{color:#eee}}</style>');
+  });
+
+  it('cleans the moved CSS like the rest: no invert(), Outlook rules or color-scheme', () => {
+    const out = sanitizeEmail('<style>@media (prefers-color-scheme: dark){img{filter:invert(1)}[data-ogsc] .h{color:#fff}.k{color-scheme:dark;color:#fff}}</style><p>z</p>');
+    expect(out).toBe('<style></style><p>z</p><style data-mf-dark-scheme media="not all">@media (min-width: 0px){img{}.k{color:#fff}}</style>');
+  });
+
+  it('adds nothing to a message without dark CSS', () => {
+    expect(sanitizeEmail('<style>.a{b:c}</style><p>x</p>')).toBe('<style>.a{b:c}</style><p>x</p>');
+  });
+
+  it('marks a message that asks to stay light, in a meta tag or in CSS, and drops its dark CSS', () => {
+    for (const html of [
+      '<html><head><meta name="color-scheme" content="only light"></head><body><style>@media (prefers-color-scheme: dark){.a{b:d}}</style><p>z</p></body></html>',
+      '<html><head><meta content="light only" name="supported-color-schemes"></head><body><p>z</p></body></html>',
+      '<style>:root{color-scheme: light only}</style><p>z</p>',
+    ]) {
+      const out = sanitizeEmail(html);
+      expect(out.startsWith('<!--mf-light-only-->'), html).toBe(true);
+      expect(out, html).not.toContain('data-mf-dark-scheme');
+    }
+    expect(sanitizeEmail('<html><head><meta name="color-scheme" content="light dark"></head><body><p>z</p></body></html>'))
+      .not.toContain('mf-light-only');
   });
 
   it('removes rules scoped to Outlook [data-og*] dark-mode selectors', () => {
@@ -363,6 +398,11 @@ function fastestRunMs(fn, runs) {
 
 describe('sanitizeEmail — crafted <style> CSS', () => {
   // Each input took 5 to 9 seconds per run when these passes were backtracking regexes.
+  it('stays linear on <meta> tags crafted against the light-only check', () => {
+    const html = '<meta name="color-scheme" content="only light"'.repeat(3000) + '<p>x</p>';
+    expect(fastestRunMs(() => sanitizeEmail(html), 2)).toBeLessThan(1000);
+  });
+
   it('stays linear on input crafted against each pass', () => {
     // Each input holds the `)`, `{` or `]` its old regex needed, where the regex could not
     // use it, so skipping a pass only when that character is absent still fails here.
@@ -784,5 +824,32 @@ describe('composeHtmlToText', () => {
     for (const html of [`<p>${'&nbsp;'.repeat(100000)}x</p>`, `<pre>${' '.repeat(100000)}x</pre>`]) {
       expect(fastestRunMs(() => composeHtmlToText(html), 2), html.slice(0, 12)).toBeLessThan(1000);
     }
+  });
+});
+
+describe('withoutDarkScheme', () => {
+  it('drops the switched-off dark style and the light-only marker, and nothing else', () => {
+    const stored = sanitizeEmail('<style>.a{b:c}@media (prefers-color-scheme: dark){.a{b:d}}</style><p>x</p>');
+    expect(withoutDarkScheme(stored)).toBe('<style>.a{b:c}</style><p>x</p>');
+    expect(withoutDarkScheme('<!--mf-light-only--><style>.a{b:c}</style><p>x</p>')).toBe('<style>.a{b:c}</style><p>x</p>');
+    expect(withoutDarkScheme('<p>plain</p>')).toBe('<p>plain</p>');
+    expect(withoutDarkScheme(null)).toBeNull();
+  });
+});
+
+describe('splitDarkScheme', () => {
+  it("separates the email, the sender's dark CSS and the light-only request", () => {
+    const stored = sanitizeEmail('<style>.a{b:c}@media (prefers-color-scheme: dark){.a{b:d}}</style><p>x</p>');
+    expect(splitDarkScheme(stored)).toEqual({ html: '<style>.a{b:c}</style><p>x</p>', darkCss: '@media (min-width: 0px){.a{b:d}}', lightOnly: false });
+    expect(splitDarkScheme(sanitizeEmail('<style>:root{color-scheme: only light}</style><p>x</p>')))
+      .toEqual({ html: '<style>:root{}</style><p>x</p>', darkCss: null, lightOnly: true });
+    expect(splitDarkScheme('<p>plain</p>')).toEqual({ html: '<p>plain</p>', darkCss: null, lightOnly: false });
+    expect(splitDarkScheme(null)).toEqual({ html: null, darkCss: null, lightOnly: false });
+  });
+
+  it("never lets the sender's dark CSS load anything remote", () => {
+    const { darkCss } = splitDarkScheme(sanitizeEmail('<style>@media (prefers-color-scheme: dark){.a{background:url(https://t.example/pixel.gif)}}</style><p>x</p>'));
+    expect(darkCss).not.toContain('t.example');
+    expect(darkCss).toContain('url()');
   });
 });

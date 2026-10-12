@@ -221,17 +221,34 @@ function upgradeStyleBlocks(html) {
   );
 }
 
+// The sender's dark design (#228). @media (prefers-color-scheme: dark) blocks used to be deleted,
+// because they fired against the forced-white frame (white text on white). They are moved instead,
+// each whole, into one style element at the end of the stored body that is switched off
+// (media="not all"), so the stored body stays a light email. splitDarkScheme below reads that back
+// out; the body route sends it as its own field and the frame applies it only when it shows the
+// message dark. The dark condition becomes one that always holds, so a block's other conditions
+// (a max-width, say) still apply. Nothing here parses or rewrites selectors.
+export const DARK_SCHEME_STYLE_ATTR = 'data-mf-dark-scheme';
+// Left in the body when the sender asked to stay light (color-scheme: only light), so the reader
+// never renders that message dark.
+export const LIGHT_ONLY_MARKER = '<!--mf-light-only-->';
+const LIGHT_ONLY_RE = /\b(?:only\s+light|light\s+only)\b/i;
+
 // Strip dark-mode CSS from a <style> block's text content.
-// Targets @media (prefers-color-scheme: dark) blocks, Outlook dark-mode attribute
-// selectors, and properties that invert or override the forced-light background.
-function stripDarkModeCss(css) {
-  // Remove @media (prefers-color-scheme: dark) { ... } blocks.
-  let out = stripDarkMediaBlocks(css);
+// Targets @media (prefers-color-scheme: dark) blocks (moved into `moved`, see above), Outlook
+// dark-mode attribute selectors, and properties that invert or override the forced-light background.
+function stripDarkModeCss(css, moved = [], flags = {}) {
+  // Move @media (prefers-color-scheme: dark) { ... } blocks out.
+  let out = stripDarkMediaBlocks(css, moved);
   // Remove rules scoped to Outlook dark-mode attribute selectors
   // (e.g. [data-ogsc], [data-ogsb]).
   out = stripOutlookDarkRules(out);
-  // Strip color-scheme declarations — the iframe meta tag controls this instead.
-  out = out.replace(/\bcolor-scheme\s*:[^;!}]+;?/gi, '');
+  // Strip color-scheme declarations — the iframe meta tag controls this instead. One that asks
+  // to stay light is remembered first.
+  out = out.replace(/\bcolor-scheme\s*:[^;!}]+;?/gi, (decl) => {
+    if (LIGHT_ONLY_RE.test(decl)) flags.lightOnly = true;
+    return '';
+  });
   // Strip filter:invert(...) — used to simulate dark mode by inverting the page,
   // which breaks rendering on our forced-white background.
   out = stripInvertFilters(out);
@@ -249,7 +266,7 @@ function stripDarkModeCss(css) {
 // that reach the same `{` or `]` share its outcome, so after one fails the scan resumes
 // past it; once the `{`, `]` or `)` a candidate needs is missing, every later candidate
 // lacks it too, so the scan stops.
-function stripDarkMediaBlocks(css) {
+function stripDarkMediaBlocks(css, moved = []) {
   const atMedia = /@media\b/gi;
   let out = '';
   let pos = 0;
@@ -257,9 +274,11 @@ function stripDarkMediaBlocks(css) {
   while ((m = atMedia.exec(css)) !== null) {
     const open = css.indexOf('{', atMedia.lastIndex);
     if (open === -1) break;
-    const dark = /prefers-color-scheme\s*:\s*dark/i.test(css.slice(atMedia.lastIndex, open));
+    const prelude = css.slice(atMedia.lastIndex, open);
+    const dark = /prefers-color-scheme\s*:\s*dark/i.test(prelude);
     const end = dark ? mediaBlockEnd(css, open) : -1;
     if (end === -1) { atMedia.lastIndex = open; continue; }
+    moved.push(`@media${prelude.replace(/prefers-color-scheme\s*:\s*dark/gi, 'min-width: 0px')}${css.slice(open, end)}`);
     out += css.slice(pos, m.index);
     pos = end;
     atMedia.lastIndex = end;
@@ -325,11 +344,59 @@ function stripInvertFilters(css) {
   return out + css.slice(pos);
 }
 
-function stripDarkModeStyleBlocks(html) {
+// Whether the raw message asks to stay light in a <meta name="color-scheme"> (or the older
+// supported-color-schemes). The head is gone by the time style blocks are processed, so this reads
+// the input. Each <meta is examined only up to its own '>', so crafted markup stays linear.
+function declaresLightOnly(html) {
+  if (!html) return false;
+  const metaRe = /<meta\b/gi;
+  let m;
+  while ((m = metaRe.exec(html)) !== null) {
+    const end = html.indexOf('>', metaRe.lastIndex);
+    if (end === -1) return false;
+    const tag = html.slice(m.index, end);
+    if (/\bname\s*=\s*["']?(?:color-scheme|supported-color-schemes)\b/i.test(tag) && LIGHT_ONLY_RE.test(tag)) return true;
+    metaRe.lastIndex = end;
+  }
+  return false;
+}
+
+// The other half of the format stripDarkModeStyleBlocks writes into a stored body: the email's own
+// HTML, the sender's dark CSS, and whether it asked to stay light, as separate values. The body
+// route sends them as separate fields, so the reader never matches markup and the HTML a reply,
+// forward or print reuses is the sanitized email alone. Writer and reader live together here so
+// the format cannot drift.
+const DARK_STYLE_OPEN = `<style ${DARK_SCHEME_STYLE_ATTR} media="not all">`;
+export function splitDarkScheme(stored) {
+  if (typeof stored !== 'string') return { html: stored, darkCss: null, lightOnly: false };
+  const lightOnly = stored.includes(LIGHT_ONLY_MARKER);
+  let html = lightOnly ? stored.split(LIGHT_ONLY_MARKER).join('') : stored;
+  let darkCss = null;
+  const start = html.lastIndexOf(DARK_STYLE_OPEN);
+  const end = start === -1 ? -1 : html.indexOf('</style>', start);
+  if (end !== -1) {
+    darkCss = html.slice(start + DARK_STYLE_OPEN.length, end) || null;
+    html = html.slice(0, start) + html.slice(end + '</style>'.length);
+  }
+  return { html, darkCss: lightOnly ? null : darkCss, lightOnly };
+}
+
+// The stored body as an email again, for HTML that leaves MailFlow straight from the server.
+export const withoutDarkScheme = (stored) => splitDarkScheme(stored).html;
+
+function stripDarkModeStyleBlocks(html, { lightOnly = false } = {}) {
   if (!html) return html;
-  return scanPaired(html, /<style\b/gi, '</style>', (open, content, close) =>
-    open + stripDarkModeCss(content) + close
+  const moved = [];
+  const flags = { lightOnly };
+  const out = scanPaired(html, /<style\b/gi, '</style>', (open, content, close) =>
+    open + stripDarkModeCss(content, moved, flags) + close
   );
+  if (flags.lightOnly) return LIGHT_ONLY_MARKER + out;
+  if (!moved.length) return out;
+  // The moved blocks get the same clean-up as the rest, so an invert() in the sender's dark CSS
+  // cannot flip the colors back once it is switched on.
+  const darkCss = stripInvertFilters(stripOutlookDarkRules(moved.join('\n')).replace(/\bcolor-scheme\s*:[^;!}]+;?/gi, ''));
+  return `${out}<style ${DARK_SCHEME_STYLE_ATTR} media="not all">${darkCss}</style>`;
 }
 
 // Re-serialize through the HTML5 tree builder first so the markup sanitize-html sees
@@ -553,8 +620,9 @@ export function sanitizeEmail(html, { preserveDraftSignature = false } = {}) {
 
   // Upgrade http:// URLs in <style> block CSS content — sanitize-html's transformTags
   // only handles attributes, so CSS url() inside <style> blocks must be fixed afterward.
-  // Then strip dark-mode CSS that would override the forced-light rendering environment.
-  return stripDarkModeStyleBlocks(upgradeStyleBlocks(stripExternalStyleBlockUrls(sanitized)));
+  // Then move the sender's dark-mode CSS aside (see stripDarkModeStyleBlocks) so it cannot override
+  // the forced-light rendering.
+  return stripDarkModeStyleBlocks(upgradeStyleBlocks(stripExternalStyleBlockUrls(sanitized)), { lightOnly: declaresLightOnly(html) });
 }
 
 // The text/plain part of a message written in the composer: its body or its signature, as HTML.
