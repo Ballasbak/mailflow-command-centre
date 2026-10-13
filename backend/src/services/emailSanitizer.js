@@ -15,6 +15,17 @@ import { logger } from './logger.js';
 // extracting <style> blocks so that Outlook-only CSS rules (e.g. mso-* properties,
 // table layout overrides) are not applied in browser rendering, where they can break
 // font sizes, spacing, and colors that the email author tuned for non-Outlook clients.
+// Case-insensitive indexOf for an ASCII needle, searched in the string itself. Searching a
+// toLowerCase() copy instead gives wrong positions once the text holds a character whose lowercase
+// is longer (İ becomes two characters): offsets drifted by one per İ, so text was cut at the wrong
+// place and a following block could be skipped.
+function indexOfCi(str, needle, from) {
+  const re = new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+  re.lastIndex = from;
+  const m = re.exec(str);
+  return m ? m.index : -1;
+}
+
 // Replace every `<tag …>content</tag>` span in linear time. A lazy
 // `<tag\b[^>]*>[\s\S]*?</tag>` /g regex is O(n²) on hostile email HTML on TWO axes:
 // the `[^>]*>` opener backtracks futilely when a tag has no `>`, and the lazy
@@ -27,8 +38,6 @@ import { logger } from './logger.js';
 // `>` or close exists at/after an opener, none exists for any later opener either
 // (positions only advance), so we stop — exactly what the regex would leave unmatched.
 function scanPaired(str, openNameRe, closeLiteral, transform) {
-  const lower = str.toLowerCase();
-  const close = closeLiteral.toLowerCase();
   let out = '';
   let pos = 0;
   let m;
@@ -37,7 +46,7 @@ function scanPaired(str, openNameRe, closeLiteral, transform) {
     const gt = str.indexOf('>', m.index);
     if (gt === -1) break; // unterminated opening tag — no match, like [^>]*> would fail
     const contentStart = gt + 1;
-    const closeIdx = lower.indexOf(close, contentStart);
+    const closeIdx = indexOfCi(str, closeLiteral, contentStart);
     if (closeIdx === -1) break;
     const spanEnd = closeIdx + closeLiteral.length;
     out += str.slice(pos, m.index) + transform(str.slice(m.index, contentStart), str.slice(contentStart, closeIdx), str.slice(closeIdx, spanEnd));
@@ -52,7 +61,6 @@ function scanPaired(str, openNameRe, closeLiteral, transform) {
 // /<!--\[if(?!\s*!)[^\]]*\]>[\s\S]*?<!\[endif\]-->/gi without its backtracking.
 function stripMsoConditionals(hc) {
   const END = '<![endif]-->';
-  const lower = hc.toLowerCase();
   const openRe = /<!--\[if/gi;
   let out = '';
   let pos = 0;
@@ -65,7 +73,7 @@ function stripMsoConditionals(hc) {
     const rb = hc.indexOf(']', after);
     if (rb === -1) break;
     if (hc[rb + 1] !== '>') { openRe.lastIndex = after; continue; } // ']' not immediately '>' — no match
-    const endIdx = lower.indexOf(END.toLowerCase(), rb + 2);
+    const endIdx = indexOfCi(hc, END, rb + 2);
     if (endIdx === -1) break;
     out += hc.slice(pos, m.index);
     pos = endIdx + END.length;
@@ -775,21 +783,131 @@ export function sanitizeSignature(html) {
 // Remote here means http(s) or protocol-relative ("//host/...", which the email frame resolves to
 // https); browsers ignore leading whitespace in a URL, so the patterns below do too.
 
+const REMOTE_URL = /^\s*(?:https?:)?\/\//i;
+const isCssSpace = (c) => c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
+
+// Every remote URL in CSS text, rewritten by `rewrite(kind, url)`, which returns the text that
+// replaces the whole token: kind 'url' for url(...), 'string' for a quoted URL inside image-set(),
+// 'import' for an @import rule (through its ';'). Anything else is copied as it is.
+//
+// One pass from left to right that never reads text twice: every search for a closing character
+// remembers where it last looked. Patterns that scan ahead from each candidate (url\(...\)) cost
+// time in proportion to candidates times length, and a <style> of 40,000 unclosed url( held the
+// event loop for half a minute. Here time grows only with the length of the CSS.
+// Case-insensitive needles are searched with regexes over the CSS itself, not over a lowercased
+// copy: lowercasing can change the length of a string (İ becomes two characters), and positions in
+// the copy would then point at the wrong text.
+const CSS_NEEDLES = { 'url(': /url\(/gi, 'image-set(': /image-set\(/gi, '@import': /@import/gi };
+const startsWithCi = (text, at, needle) => text.slice(at, at + needle.length).toLowerCase() === needle;
+
+function rewriteCssUrls(css, rewrite) {
+  const n = css.length;
+  const found = new Map();
+  // The next index of `needle` at or after `from`. A result is reused while it still answers the
+  // question, so a search never covers the same text twice as long as `from` only grows.
+  const next = (needle, from) => {
+    const hit = found.get(needle);
+    if (hit && hit.from <= from && (hit.at === -1 || hit.at >= from)) return hit.at;
+    let at;
+    const re = CSS_NEEDLES[needle];
+    if (re) {
+      re.lastIndex = from;
+      const m = re.exec(css);
+      at = m ? m.index : -1;
+    } else {
+      at = css.indexOf(needle, from);
+    }
+    found.set(needle, { from, at });
+    return at;
+  };
+  // A url( token starting at `start` (the 'u'): its value and the index after its ')', or null.
+  const urlToken = (start) => {
+    let j = start + 4;
+    while (j < n && isCssSpace(css[j])) j += 1;
+    let value;
+    let k;
+    if (css[j] === '"' || css[j] === "'") {
+      const close = next(css[j], j + 1);
+      if (close === -1) return null;
+      value = css.slice(j + 1, close);
+      k = close + 1;
+    } else {
+      k = j;
+      while (k < n && css[k] !== ')' && css[k] !== '(' && css[k] !== '"' && css[k] !== "'" && !isCssSpace(css[k])) k += 1;
+      value = css.slice(j, k);
+    }
+    while (k < n && isCssSpace(css[k])) k += 1;
+    return css[k] === ')' ? { value, end: k + 1 } : null;
+  };
+
+  let out = '';
+  let i = 0;
+  while (i < n) {
+    const candidates = [['url', next('url(', i)], ['set', next('image-set(', i)], ['import', next('@import', i)]]
+      .filter(([, at]) => at !== -1);
+    if (!candidates.length) break;
+    const [kind, at] = candidates.reduce((a, b) => (b[1] < a[1] ? b : a));
+    out += css.slice(i, at);
+    if (kind === 'url') {
+      const token = urlToken(at);
+      if (token && REMOTE_URL.test(token.value)) { out += rewrite('url', token.value.trim()); i = token.end; continue; }
+      out += css.slice(at, at + 4);
+      i = at + 4;
+    } else if (kind === 'import') {
+      const semi = next(';', at);
+      const end = semi === -1 ? n : semi + 1;
+      let j = at + 7;
+      while (j < end && isCssSpace(css[j])) j += 1;
+      let target = '';
+      if (startsWithCi(css, j, 'url(')) target = urlToken(j)?.value ?? '';
+      else if (css[j] === '"' || css[j] === "'") { const close = next(css[j], j + 1); target = close === -1 ? '' : css.slice(j + 1, close); }
+      if (REMOTE_URL.test(target)) { out += rewrite('import', target.trim()); i = end; continue; }
+      out += css.slice(at, at + 7);
+      i = at + 7;
+    } else {
+      // image-set( ... ): to its matching ')', its quoted URLs and url() tokens rewritten.
+      const open = at + 'image-set('.length;
+      out += css.slice(at, open);
+      let depth = 1;
+      let k = open;
+      while (k < n && depth > 0) {
+        const c = css[k];
+        if (c === '"' || c === "'") {
+          const close = next(c, k + 1);
+          const stop = close === -1 ? n : close + 1;
+          const value = css.slice(k + 1, close === -1 ? n : close);
+          out += REMOTE_URL.test(value) ? rewrite('string', value.trim()) : css.slice(k, stop);
+          k = stop;
+        } else if (startsWithCi(css, k, 'url(')) {
+          const token = urlToken(k);
+          if (token && REMOTE_URL.test(token.value)) { out += rewrite('url', token.value.trim()); k = token.end; }
+          else { out += css.slice(k, k + 4); k += 4; depth += 1; }
+        } else {
+          if (c === '(') depth += 1;
+          else if (c === ')') depth -= 1;
+          out += c;
+          k += 1;
+        }
+      }
+      i = k;
+    }
+  }
+  return out + css.slice(i);
+}
+
 // Remote loads in CSS text made inert: url(...) and quoted URLs in image-set() become data:,
 // (which draws nothing) and remote @imports are dropped. url(data:,) carries no quotes, so it is
 // safe inside any attribute or style block.
-function blockCssUrls(css) {
-  return css
-    .replace(/@import\s+(?:url\(\s*)?(["']?)\s*(?:https?:)?\/\/[^"')]*\1\s*\)?[^;{}]*;?/gi, '')
-    .replace(/url\(\s*(?:"\s*(?:https?:)?\/\/[^"]*"|'\s*(?:https?:)?\/\/[^']*'|(?:https?:)?\/\/[^"')\s]*)\s*\)/gi, 'url(data:,)')
-    .replace(/((?:-webkit-)?image-set\()([^)]*)\)/gi, (_, open, inner) =>
-      `${open}${inner.replace(/(["'])\s*(?:https?:)?\/\/[^"']*\1/gi, '"data:,"')})`);
-}
+const blockCssUrls = (css) =>
+  rewriteCssUrls(css, (kind) => (kind === 'import' ? '' : kind === 'url' ? 'url(data:,)' : '"data:,"'));
 
 // An attribute value as written in the HTML, and back. Sanitized HTML writes values in double
-// quotes with " as &quot; and & as &amp;; a CSS URL quoted with " is only visible once decoded.
-const decodeAttr = (v) => v.replace(/&quot;|&#0*34;|&#x0*22;/gi, '"').replace(/&#0*39;|&#x0*27;|&apos;/gi, "'").replace(/&amp;/gi, '&');
-const encodeAttr = (v) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+// quotes with " as &quot;, & as &amp; and < > as &lt; &gt;; a CSS URL quoted with " is only
+// visible once decoded, and what was decoded is encoded again the same way.
+const decodeAttr = (v) => v
+  .replace(/&quot;|&#0*34;|&#x0*22;/gi, '"').replace(/&#0*39;|&#x0*27;|&apos;/gi, "'")
+  .replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/&amp;/gi, '&');
+const encodeAttr = (v) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 // Whether the HTML loads anything remote that blockRemoteImages would stop: exactly when blocking
 // would change it, so the two can never disagree.

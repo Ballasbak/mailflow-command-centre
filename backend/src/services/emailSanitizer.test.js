@@ -853,3 +853,47 @@ describe('splitDarkScheme', () => {
     expect(darkCss).toContain('url()');
   });
 });
+
+// A crafted <style> made every url( pattern scan to the end of the block from each candidate: 40,000
+// unclosed url(// held the event loop for half a minute per call, and the body route calls both.
+// The CSS scanner now reads the text once; these would take seconds again if that regressed.
+describe('remote image blocking stays fast on hostile CSS', () => {
+  const n = 40000;
+  it.each([
+    ['unclosed url(//', `<style>${'a{background:url(//x'.repeat(n)}</style>`],
+    ['unclosed quoted url(', `<style>${'a{background:url("//x'.repeat(n)}</style>`],
+    ['unclosed image-set(', `<style>${'a{b:image-set("//x" '.repeat(n)}</style>`],
+    ['image-set( without strings', `<style>${'a{b:image-set('.repeat(n)}</style>`],
+    ['unclosed @import', `<style>${'@import url("//x '.repeat(n)}</style>`],
+    ['url( with nothing remote', `<style>${'a{background:url(x'.repeat(n)}</style>`],
+  ])('%s', (_, html) => {
+    const started = performance.now();
+    hasRemoteImages(html);
+    blockRemoteImages(html);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+});
+
+// Searching a lowercased copy put positions off by one per İ (its lowercase is two characters), so
+// in Turkish mail a later <style> could be skipped and text cut at the wrong place.
+describe('text whose lowercase is longer', () => {
+  const many = 'İ'.repeat(30);
+
+  it('still blocks the remote URL in a later style block, and keeps the text around it', () => {
+    const html = `<p>${many}</p><style>.a{color:red}</style><p>between</p><style>.h{background:url(//x.example/a.png)}</style><p>after</p>`;
+    const out = blockRemoteImages(html);
+    expect(out).not.toContain('x.example');
+    expect(out).toBe(`<p>${many}</p><style>.a{color:red}</style><p>between</p><style>.h{background:url(data:,)}</style><p>after</p>`);
+  });
+
+  it('strips an Outlook-only block from the head without eating what follows', () => {
+    const out = stripEmailHead(`<html><head><title>${many}</title><!--[if mso]><style>.m{}</style><![endif]--><style>.keep{color:blue}</style></head><body>x</body></html>`);
+    expect(out).not.toContain('.m{}');
+    expect(out).toContain('<style>.keep{color:blue}</style>');
+  });
+});
+
+it('keeps &lt; and &gt; in an inline style it rewrites', () => {
+  const html = '<div style="background:url(https://example.com/a.png);font-family:&quot;A&lt;B&gt;&quot;">x</div>';
+  expect(blockRemoteImages(html)).toBe('<div style="background:url(data:,);font-family:&quot;A&lt;B&gt;&quot;">x</div>');
+});
