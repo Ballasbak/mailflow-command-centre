@@ -46,6 +46,11 @@ export const FIXTURES = {
   // color mid-animation and take the old dark text on the new dark background as unreadable.
   transitions: '<style>a, p { transition: color 2s, background-color 2s; }</style>'
     + '<p style="color:#222222">Body text that fades between colors.</p><p><a href="https://example.invalid/" style="color:#1a0dab">A link that fades too</a></p>',
+  // Transitions the email declares more forcefully than MailFlow's switch-off rule can override:
+  // !important with a more specific selector, and inline !important (seen in real mail).
+  forcedTransitions: '<style>td p a.lnk { transition: all 0.5s !important; }</style>'
+    + '<table width="100%"><tr><td bgcolor="#ffffff"><p style="color:#232323"><a class="lnk" href="https://example.invalid/" style="color:#3700ff">A link that insists on fading</a></p>'
+    + '<p><a href="https://example.invalid/" style="color:#3700ff;transition:color 0.5s !important">Another one, inline</a></p></td></tr></table>',
   // A sender that asks to stay light.
   lightOnly: '<html><head><meta name="color-scheme" content="only light"></head><body><p style="color:#333">Keep me light please.</p><img src="https://example.invalid/pixel.gif" width="1" height="1"></body></html>',
 };
@@ -117,6 +122,9 @@ export async function runSelftest() {
 
     assert.equal(auto('transitions').outcome, 'recolor', 'not refused because of a running transition');
     assert.equal(auto('transitions').verdict, 'clean');
+
+    assert.equal(auto('forcedTransitions').outcome, 'recolor', 'not refused because of a transition MailFlow could not switch off');
+    assert.equal(m('forcedTransitions', 'recolor').verdict, 'clean');
 
     assert.deepEqual(Object.keys(results.lightOnly.modes), ['light'], 'a sender that asks to stay light is never shown dark');
 

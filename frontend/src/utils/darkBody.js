@@ -53,6 +53,9 @@ function switchStyles(doc, withSender) {
 // read colors halfway between old and new: dark text on the new dark background, an email
 // refused for nothing. Styles are settled before transitions come back, and that alone changes no
 // color, so nothing animates afterwards either.
+//
+// The rule below cannot win against an email's own `transition: ... !important` with a more
+// specific selector, or inline; finishTransitions catches what still starts.
 function withoutTransitions(doc, fn) {
   const style = doc.createElement('style');
   style.textContent = '*, *::before, *::after { transition: none !important; }';
@@ -62,6 +65,16 @@ function withoutTransitions(doc, fn) {
   } finally {
     void doc.documentElement.offsetHeight;
     style.remove();
+  }
+}
+
+// Jumps every running CSS transition in `doc` to its end, so what is measured next is what is
+// shown. Asking for the document's animations also brings its styles up to date, which is what
+// starts any transition a change just caused. CSS animations (@keyframes) are left alone: MailFlow's
+// colors are !important, which animations cannot override.
+function finishTransitions(doc) {
+  for (const animation of doc.getAnimations?.() ?? []) {
+    if ('transitionProperty' in animation) animation.finish();
   }
 }
 
@@ -93,6 +106,7 @@ function showDark(doc, { palette = DARK_DEFAULTS, mode = 'auto', samples = false
   let dark = null;
   for (const kind of order) {
     const undo = KINDS[kind](doc, palette);
+    finishTransitions(doc);
     dark = measureTextContrast(doc, { canvas, samples });
     const comparison = compareWithLight(state.light, dark);
     attempts.push({ kind, ...comparison });
@@ -102,6 +116,7 @@ function showDark(doc, { palette = DARK_DEFAULTS, mode = 'auto', samples = false
       return finish(kind);
     }
     undo();
+    finishTransitions(doc);
   }
   state.outcome = 'light';
   return finish('light');
@@ -123,6 +138,7 @@ function restore(doc) {
   state.undo?.();
   state.undo = null;
   state.outcome = 'light';
+  finishTransitions(doc);
 }
 
 // What `doc` shows now: 'light' (as sent), 'sender', 'recolor' or 'naive'.
