@@ -740,3 +740,8 @@ body, #root {
   -webkit-user-select: none; user-select: none;
 }
 .mf-pdf-page .textLayer.selecting .endOfContent { top: 0; }
+
+/* Swiping between messages (components/SwipePager.jsx) is horizontal scrolling: no scrollbar or
+   iOS scroll indicator for it. */
+.swipe-pager { scrollbar-width: none; }
+.swipe-pager::-webkit-scrollbar { display: none; }

@@ -7,10 +7,12 @@ import { shortcutBus } from '../utils/shortcutBus.js';
 import { canHandlePaneShortcut } from '../utils/shortcutApplicability.js';
 import { getEffectiveShortcuts, parseModKey, modCompactLabel } from '../utils/defaultShortcuts.js';
 import { useMobile } from '../hooks/useMobile.js';
+import { useSwipeBack } from '../hooks/useSwipeBack.js';
+import SwipePager from './SwipePager.jsx';
 import { clearDeleteGuard, clearPendingDelete, setCompletedDelete, setPendingDelete } from '../utils/pendingDeletes.js';
-import { pendingMarkReadMap, completedMarkReadMap, setPending } from '../utils/pendingReads.js';
+import { pendingMarkReadMap, completedMarkReadMap } from '../utils/pendingReads.js';
 import { applyMarkRead, scheduleMarkRead, cancelScheduledMarkRead, cancelScheduledMarkReadFor } from '../utils/markRead.js';
-import { advanceSelectionAfterRemoval } from '../utils/listSelection.js';
+import { advanceSelectionAfterRemoval, adjacentRow, openAdjacentRow } from '../utils/listSelection.js';
 import { isDarkTheme, canShowDark, showDark } from '../utils/darkScheme.js';
 import { markMessageUnread } from '../utils/messageHotkeys.js';
 import { BUILTIN_SUMMARIZE } from '../aiActions.js';
@@ -146,35 +148,10 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
   }, [setSelectedMessage]);
 
   const paneRef = useRef(null);
-  const mountedRef = useRef(true);
-  const swipeBackTimerRef = useRef(null);
   const autoMarkReadTimerRef = useRef(null);
   useEffect(() => () => {
-    mountedRef.current = false;
-    if (swipeBackTimerRef.current) clearTimeout(swipeBackTimerRef.current);
     cancelScheduledMarkRead(autoMarkReadTimerRef.current);
   }, []);
-
-  const resetPaneSwipeStyles = useCallback(() => {
-    const el = paneRef.current;
-    if (!el) return;
-    el.style.transition = '';
-    el.style.transform = '';
-  }, []);
-
-  // The mobile swipe-back gesture writes transform/transition inline for the
-  // dismiss animation. MessagePane stays mounted while hidden, so clear those
-  // inline styles before painting the next selected email. Also cancel the
-  // swipe-back timer so it can't fire history.back() after a new email has
-  // already been selected (race: user selects email B within the 220ms window).
-  useLayoutEffect(() => {
-    if (!isMobile || !selectedMessageId) return;
-    if (swipeBackTimerRef.current) {
-      clearTimeout(swipeBackTimerRef.current);
-      swipeBackTimerRef.current = null;
-    }
-    resetPaneSwipeStyles();
-  }, [isMobile, selectedMessageId, resetPaneSwipeStyles]);
 
   // Reset scroll position and iframe height synchronously before the browser
   // paints the new message, so the user never sees stale blank space from the
@@ -648,124 +625,26 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
     el.style.animation = 'pane-fade-in 0.15s ease';
   }, [selectedMessageId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Swipe-back gesture: right-swipe from left edge returns to message list on mobile
-  useEffect(() => {
-    if (!isMobile) return;
-    const el = paneRef.current;
-    if (!el) return;
+  // A neighbor's body, loaded ahead into the cache this pane reads first, so a swipe opens a
+  // message that is ready to show (#229).
+  const prefetchBody = useCallback((row) => {
+    if (!row || bodyCache.current[row.id]) return;
+    api.getMessageBody(row.id, imagesRequestedRef.current.has(row.id)).then((data) => {
+      if (!(data?.html || data?.text) || bodyCache.current[row.id]) return;
+      bodyCache.current[row.id] = data;
+      bodyCacheOrder.current.push(row.id);
+      while (bodyCacheOrder.current.length > 50) delete bodyCache.current[bodyCacheOrder.current.shift()];
+    }).catch(() => {});
+  }, []);
 
-    let startX = 0, startY = 0, dir = null, active = false, fromEdge = false;
-
-    const onStart = (e) => {
-      const t = e.touches[0];
-      startX = t.clientX; startY = t.clientY;
-      fromEdge = t.clientX <= 32;
-      dir = null; active = false;
-    };
-
-    const onMove = (e) => {
-      const t = e.touches[0];
-      const dx = t.clientX - startX;
-      const dy = t.clientY - startY;
-      if (!dir) {
-        if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
-        dir = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
-      }
-      if (dir === 'v') return;
-      if (fromEdge) {
-        if (dx < 0) return;
-        e.preventDefault();
-        active = true;
-        el.style.transition = 'none';
-        el.style.transform = `translateX(${dx}px)`;
-      } else {
-        if (Math.abs(dx) < 5) return;
-        e.preventDefault();
-        active = true;
-      }
-    };
-
-    const onEnd = (e) => {
-      if (!active) return;
-      active = false;
-      const dx = e.changedTouches[0].clientX - startX;
-      if (fromEdge) {
-        // Prevent the synthesized click that fires ~300ms after touchend.
-        // After swipe-back the pane hides and the list is visible at the same
-        // coordinates — the phantom click would ghost-select a list row.
-        e.preventDefault();
-        if (dx > 80) {
-          el.style.transition = 'transform 0.22s ease';
-          el.style.transform = `translateX(${window.innerWidth}px)`;
-          if (swipeBackTimerRef.current) clearTimeout(swipeBackTimerRef.current);
-          swipeBackTimerRef.current = setTimeout(() => {
-            swipeBackTimerRef.current = null;
-            resetPaneSwipeStyles();
-            if (mountedRef.current) history.back();
-          }, 220);
-        } else {
-          el.style.transition = 'transform 0.25s ease';
-          el.style.transform = 'translateX(0)';
-        }
-      } else {
-        const { messages: msgs, searchResults: sr, searchQuery: sq, selectedMessageId: selId, setSelectedMessage: setSel, updateMessage: updMsg, decrementUnread: decUnread, incrementUnread: incUnread, adjustCategoryCount: adjCat } = useStore.getState();
-        const list = sq.trim() ? sr : msgs;
-        const idx = list.findIndex(m => m.id === selId);
-        let target = null;
-        if (dx < -60 && idx >= 0 && idx < list.length - 1) {
-          target = list[idx + 1];
-        } else if (dx > 60 && idx > 0) {
-          target = list[idx - 1];
-        }
-        if (target) {
-          window.dispatchEvent(new CustomEvent(MESSAGE_OPENING_EVENT));
-          api.getMessageBody(target.id).catch(() => {});
-          setSel(target.id);
-          cancelScheduledMarkRead(autoMarkReadTimerRef.current);
-          autoMarkReadTimerRef.current = null;
-          if (!target.is_read) {
-            const { markReadBehavior, markReadDelay } = useStore.getState();
-            if (markReadBehavior !== 'manual') {
-              const doMarkRead = () => {
-                updMsg(target.id, { is_read: true });
-                decUnread(target.account_id);
-                adjCat(target.category, -1);
-                setPending(target.id, target.account_id);
-                api.bulkRead([target.id], true)
-                  .then(() => {
-                    pendingMarkReadMap.delete(target.id);
-                    completedMarkReadMap.set(target.id, target.account_id);
-                    setTimeout(() => completedMarkReadMap.delete(target.id), 10000);
-                  })
-                  .catch(e => {
-                    console.error('markRead failed:', e.message);
-                    updMsg(target.id, { is_read: false });
-                    incUnread(target.account_id);
-                    adjCat(target.category, 1);
-                    pendingMarkReadMap.delete(target.id);
-                  });
-              };
-              if (markReadBehavior === 'delay') {
-                autoMarkReadTimerRef.current = setTimeout(doMarkRead, (markReadDelay || 1) * 1000);
-              } else {
-                doMarkRead();
-              }
-            }
-          }
-        }
-      }
-    };
-
-    el.addEventListener('touchstart', onStart, { passive: true });
-    el.addEventListener('touchmove', onMove, { passive: false });
-    // Non-passive so onEnd can call e.preventDefault() to suppress the phantom click.
-    el.addEventListener('touchend', onEnd, { passive: false });
-    return () => {
-      el.removeEventListener('touchstart', onStart);
-      el.removeEventListener('touchmove', onMove);
-      el.removeEventListener('touchend', onEnd);
-    };
-  }, [isMobile, setSelectedMessage, resetPaneSwipeStyles]);
+  // Swiping on a phone (#229): from the left edge back to the list (hooks/useSwipeBack.js); left and
+  // right for the next and previous message is the SwipePager around the content below.
+  useSwipeBack({
+    enabled: isMobile && !windowMode,
+    rootRef: paneRef,
+    navKey: selectedMessageId,
+    onBack: () => history.back(),
+  });
 
   // Both drafts are built by the shared util, so replying from the list, from the
   // reading pane, from a conversation and from GTD triage all produce the same draft.
@@ -2080,6 +1959,16 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
         </PaneBtn>
       </div>
 
+      {/* Swiping between messages on a phone (#229): the next and previous rows of the list, opened
+          as a click on them does (utils/listSelection.js openAdjacentRow). */}
+      <SwipePager
+        enabled={isMobile && !windowMode}
+        prev={isMobile && !windowMode ? adjacentRow('prev') : null}
+        next={isMobile && !windowMode ? adjacentRow('next') : null}
+        navKey={selectedMessageId}
+        onNavigate={(dir) => openAdjacentRow(dir)}
+        onPrefetch={prefetchBody}
+      >
       {/* Single scroll container — sender card + email body scroll together */}
       <div
         ref={scrollContainerRef}
@@ -2723,6 +2612,7 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
         </div>
       )}
       </div>{/* end single scroll container */}
+      </SwipePager>
 
       {/* Mobile move-to-folder bottom sheet */}
       {showMovePicker && isMobile && (
