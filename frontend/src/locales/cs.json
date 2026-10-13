@@ -256,6 +256,7 @@
     "pullToSync": "Tažením synchronizujete",
     "releaseToSync": "Uvolněním synchronizujete",
     "noSearchResults": "Nebyly nalezeny žádné výsledky",
+    "searching": "Hledání…",
     "noSearchResultsDesc": "Žádné výsledky pro {{query}}",
     "searchFailed": "Hledání se nezdařilo",
     "clearSearch": "Vymazat hledání",

@@ -399,6 +399,7 @@
     "pullToSync": "下拉以同步",
     "releaseToSync": "松开以同步",
     "noSearchResults": "未找到结果",
+    "searching": "正在搜索…",
     "noSearchResultsDesc": "未找到与 {{query}} 相关的结果",
     "searchFailed": "搜索失败",
     "clearSearch": "清除搜索",

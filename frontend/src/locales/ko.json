@@ -399,6 +399,7 @@
     "pullToSync": "당겨서 동기화",
     "releaseToSync": "동기화하려면 손을 떼세요",
     "noSearchResults": "검색결과가 없습니다",
+    "searching": "검색 중…",
     "clearSearch": "검색 지우기",
     "noSearchResultsDesc": "{{query}}에 대한 결과가 없습니다.",
     "searchHelp": {

@@ -399,6 +399,7 @@
     "pullToSync": "Pull to sync",
     "releaseToSync": "Release to sync",
     "noSearchResults": "No results found",
+    "searching": "Searching…",
     "noSearchResultsDesc": "No results for {{query}}",
     "searchFailed": "Search failed",
     "clearSearch": "Clear search",

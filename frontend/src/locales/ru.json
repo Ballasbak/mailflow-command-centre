@@ -399,6 +399,7 @@
     "pullToSync": "Потяните для синхронизации",
     "releaseToSync": "Отпустите для синхронизации",
     "noSearchResults": "Результаты не найдены",
+    "searching": "Поиск…",
     "noSearchResultsDesc": "Ничего не найдено по запросу {{query}}",
     "searchFailed": "Ошибка поиска",
     "clearSearch": "Очистить поиск",

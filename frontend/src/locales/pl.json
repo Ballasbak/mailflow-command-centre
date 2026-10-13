@@ -413,6 +413,7 @@
     "pullToSync": "Pociągnij, aby zsynchronizować",
     "releaseToSync": "Puść, aby zsynchronizować",
     "noSearchResults": "Nie znaleziono wyników",
+    "searching": "Wyszukiwanie…",
     "noSearchResultsDesc": "Brak wyników dla {{query}}",
     "searchFailed": "Wyszukiwanie nie powiodło się",
     "clearSearch": "Wyczyść wyszukiwanie",
