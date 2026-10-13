@@ -40,7 +40,7 @@ const REPO = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const SERVED = /^\/(scripts\/dark-audit\/harness\.html|frontend\/src\/utils\/[A-Za-z]+\.js)$/;
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript' };
 
-const applies = (email, mode) => !email.lightOnly && (mode !== 'sender' || Boolean(email.darkCss));
+export const applies = (email, mode) => !email.lightOnly && (mode !== 'sender' || Boolean(email.darkCss));
 
 // Whether two light measurements of the same email are the same.
 function sameMeasurement(a, b) {
@@ -48,9 +48,10 @@ function sameMeasurement(a, b) {
   return a.every((e, i) => e.i === b[i].i && e.chars === b[i].chars && e.ratio === b[i].ratio && e.overImage === b[i].overImage);
 }
 
-// `stats` counts every request the emails and the harness made, how many were served from the repo
-// and how many blocked; the self-test asserts nothing else happened.
-export async function auditEmails(emails, { shotsDir = null, onProgress, stats = {} } = {}) {
+// The harness page in Chromium, with every request blocked but the harness's own files. `stats`
+// counts every request the emails and the harness made, how many were served from the repo and
+// how many blocked; the self-test asserts nothing else happened.
+export async function openHarness(stats = {}) {
   const browser = await chromium.launch();
   const context = await browser.newContext({ viewport: { width: WIDTH, height: 1500 } });
   stats.requests = 0;
@@ -69,7 +70,11 @@ export async function auditEmails(emails, { shotsDir = null, onProgress, stats =
   const page = await context.newPage();
   await page.goto(`http://${HOST}/scripts/dark-audit/harness.html`);
   await page.waitForFunction('window.harnessReady === true');
-  const frame = page.locator('#frame');
+  return { browser, page, frame: page.locator('#frame') };
+}
+
+export async function auditEmails(emails, { shotsDir = null, onProgress, stats = {} } = {}) {
+  const { browser, page, frame } = await openHarness(stats);
 
   const shoot = async (key, mode) => {
     const png = await frame.screenshot();

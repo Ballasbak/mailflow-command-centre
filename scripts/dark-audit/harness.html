@@ -82,7 +82,44 @@ async function brightShare(b64) {
   return Math.round((bright / n) * 1000) / 1000;
 }
 
-window.harness = { load, light, show, restore, brightShare };
+// Diagnostics, for an email the audit flagged: facts about the i-th piece of visible text (as
+// utils/emailContrast.js numbers them) and what is painted behind it, never the text itself.
+const SKIP_PARENTS = new Set(['STYLE', 'SCRIPT', 'TEMPLATE', 'TITLE', 'HEAD']);
+function textNode(i) {
+  const d = doc();
+  const walker = d.createTreeWalker(d.body, 4);
+  let n = -1;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const el = node.parentElement;
+    if (!el || SKIP_PARENTS.has(el.tagName) || !node.nodeValue.replace(/\s+/g, ' ').trim()) continue;
+    n += 1;
+    if (n === i) return node;
+  }
+  return null;
+}
+function describe(i) {
+  const node = textNode(i);
+  if (!node) return null;
+  const win = doc().defaultView;
+  const chain = [];
+  for (let el = node.parentElement; el; el = el.parentElement) {
+    const s = win.getComputedStyle(el);
+    chain.push({
+      tag: el.tagName.toLowerCase(),
+      color: s.color, fill: s.webkitTextFillColor, background: s.backgroundColor,
+      backgroundImage: s.backgroundImage === 'none' ? 'none' : s.backgroundImage.startsWith('url') ? 'url' : 'gradient',
+      opacity: s.opacity, filter: s.filter, blend: s.mixBlendMode, visibility: s.visibility,
+      position: s.position, transition: s.transitionProperty + ' ' + s.transitionDuration,
+      animation: s.animationName, inlineColor: el.style.getPropertyValue('color'),
+      inlineBackground: el.style.getPropertyValue('background-color'),
+      animations: el.getAnimations ? el.getAnimations().length : null,
+    });
+  }
+  return { chars: node.nodeValue.replace(/\s+/g, ' ').trim().length, chain };
+}
+const settle = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+window.harness = { load, light, show, restore, brightShare, describe, settle };
 window.harnessReady = true;
 </script>
 </body>
