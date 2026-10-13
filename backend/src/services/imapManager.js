@@ -2648,11 +2648,15 @@ export class ImapManager {
       }
     }
 
-    // Refresh OAuth token if needed before connecting
-    account = await ensureFreshToken(account);
-    const { resolved, policy } = await resolveAccountHost(account);
     let client;
     try {
+      // Inside the try: a token refresh that fails, or a host the address check refuses, must
+      // release the in-progress lock and be recorded like any other failed connect. Before it
+      // was, it left the account "connecting" until a restart: the health check skipped it,
+      // Sync now said "Already connecting", and the user saw no error.
+      // Refresh OAuth token if needed before connecting
+      account = await ensureFreshToken(account);
+      const { resolved, policy } = await resolveAccountHost(account);
       // Connect via the shared helper: it attaches the #360 handshake-error listener, races the
       // connect against a 30s timeout (client.connect() has none — a slow/unresponsive server like
       // purelymail on a cold start would otherwise hang forever, wedging retries while

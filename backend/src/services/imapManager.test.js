@@ -2050,6 +2050,31 @@ describe("connectAccount attaches 'error' before connect (#360)", () => {
   });
 });
 
+// A host the address check refuses (or an OAuth refresh that fails) used to throw before the
+// try that releases the in-progress lock: the account stayed "connecting" until a restart.
+describe('connectAccount when the host is refused', () => {
+  it('releases the lock and records the error, so the next attempt runs', async () => {
+    resolveForConnection.mockReset().mockRejectedValue(new Error('Host cannot be a private or reserved IP address'));
+    getConnectionPolicy.mockResolvedValue({ allowPrivateHosts: false, allowInsecureTls: false });
+    query.mockReset().mockResolvedValue({ rows: [] });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const mgr = new ImapManager(null);
+    clearInterval(mgr._healthCheckTimer);
+    clearInterval(mgr._snippetSchedulerTimer);
+    mgr.disconnectAccount = vi.fn(() => Promise.resolve());
+    mgr.broadcast = vi.fn();
+    const acct = { id: 'acct-refused', user_id: 'u1', imap_host: '2130706433', imap_port: 993, imap_tls: true, auth_user: 'u', auth_pass: 'enc' };
+
+    expect(await mgr.connectAccount(acct)).toBe(false);
+    expect(mgr.connectingAccounts.has(acct.id)).toBe(false);
+    expect(query.mock.calls.some(([sql, params]) => /SET sync_error/.test(sql) && /private or reserved/.test(params[0]))).toBe(true);
+    // Not "Already connecting": the second attempt reaches the host check again.
+    expect(await mgr.connectAccount(acct)).toBe(false);
+    expect(resolveForConnection).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('account error reporting: transient failures must not paint the account red', () => {
   const account = { id: 'acct-1', user_id: 'u1', email_address: 'a@example.com' };
   const ctx = () => ({ _syncErrorState: new Map(), _accountErrorStreak: new Map(), broadcast: vi.fn() });
