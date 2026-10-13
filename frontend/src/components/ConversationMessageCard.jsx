@@ -15,6 +15,7 @@ import { isDarkTheme, canShowDark, showDark } from '../utils/darkScheme.js';
 import AiResultBox from './AiResultBox.jsx';
 import { useAiActions } from '../hooks/useAiActions.js';
 import { BUILTIN_SUMMARIZE } from '../aiActions.js';
+import { formatDateTime } from '../utils/formatDate.js';
 
 // One message inside a conversation.
 //
@@ -212,7 +213,7 @@ export default function ConversationMessageCard({ message, expanded, onToggle, o
       shortcutBus.off('printMessage', onPrint);
     };
   }, [selected, expanded, body, message, addNotification, t]);
-  const when = message.date ? new Date(message.date).toLocaleString() : '';
+  const when = formatDateTime(message.date);
   const who = message.from_name || message.from_email || '';
 
   return (

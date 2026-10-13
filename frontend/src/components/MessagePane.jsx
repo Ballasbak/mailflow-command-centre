@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } fr
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../store/index.js';
 import { api } from '../utils/api.js';
-import { format } from 'date-fns';
+import { formatMessageDateTime } from '../utils/formatDate.js';
 import { shortcutBus } from '../utils/shortcutBus.js';
 import { canHandlePaneShortcut } from '../utils/shortcutApplicability.js';
 import { getEffectiveShortcuts, parseModKey, modCompactLabel } from '../utils/defaultShortcuts.js';
@@ -2264,7 +2264,7 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
             {/* Date + account */}
             <div style={{ flexShrink: 0, textAlign: 'right' }}>
               <div style={{ fontSize: 12, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
-                {message.date ? format(new Date(message.date), isMobile ? 'MMM d, h:mm a' : 'MMM d, yyyy h:mm a') : ''}
+                {formatMessageDateTime(message.date, { withYear: !isMobile })}
               </div>
               <div style={{
                 fontSize: 11, marginTop: 4,
