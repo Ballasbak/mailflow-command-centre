@@ -834,7 +834,7 @@ export default function Sidebar() {
       {/* Header */}
       <div style={{
         paddingTop: 'calc(var(--sat) + 16px)',
-        paddingBottom: 16, paddingLeft: 12, paddingRight: 12,
+        paddingBottom: 'calc(16px - var(--sat-trim))', paddingLeft: 12, paddingRight: 12,
         display: 'flex', alignItems: 'center',
         justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle)',
         minHeight: 56, flexShrink: 0,

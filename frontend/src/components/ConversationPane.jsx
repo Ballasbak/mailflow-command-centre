@@ -161,7 +161,7 @@ export default function ConversationPane({ threadId, folder, unified = false, se
   const mobileBackBar = isMobile && (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 8,
-      paddingTop: 'calc(var(--sat) + 10px)', paddingBottom: 10, paddingLeft: 14, paddingRight: 14,
+      paddingTop: 'calc(var(--sat) + 10px)', paddingBottom: 'calc(10px - var(--sat-trim))', paddingLeft: 14, paddingRight: 14,
       borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-secondary)', flexShrink: 0,
     }}>
       <button

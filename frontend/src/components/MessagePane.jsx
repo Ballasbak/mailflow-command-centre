@@ -1541,7 +1541,7 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
           paddingTop: 'calc(var(--sat) + 10px)',
-          paddingBottom: 10, paddingLeft: 14, paddingRight: 14,
+          paddingBottom: 'calc(10px - var(--sat-trim))', paddingLeft: 14, paddingRight: 14,
           borderBottom: '1px solid var(--border-subtle)',
           background: 'var(--bg-secondary)', flexShrink: 0,
           boxShadow: paneScrolled ? '0 1px 10px rgba(0,0,0,0.2)' : 'none',
