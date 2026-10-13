@@ -10,6 +10,7 @@ import { extractImapError } from '../services/imapError.js';
 import { isConnectionRefusal } from '../services/imapManager.js';
 import { stripEmailHead, hasRemoteImages, blockRemoteImages, rewriteEbayImageserUrls, rewriteAnchorHrefs, splitDarkScheme, proxyRemoteImages, remoteImageRefs } from '../services/emailSanitizer.js';
 import { imageProxyPath, fetchProxiedImage, createUserLimiter } from '../services/imageProxy.js';
+import { shrinkImage } from '../services/imageShrink.js';
 import { needsCidRefetch, withoutCidMarker } from '../utils/cidRefs.js';
 import { sanitizeDbText, storeFetchedBody } from '../services/messageBodyStore.js';
 import { snippetFromBody, decodeMimeWords, parseRawHeaders, parseMailboxList, buildHeadersFromMessage } from '../services/messageParser.js';
@@ -479,8 +480,9 @@ router.get('/messages/:id/body', async (req, res) => {
     // Remote images allowed for this message load through the image proxy (services/imageProxy.js),
     // and the email frame then allows images from MailFlow alone.
     const remoteImagesProxied = !remoteImagesBlocked;
-    if (remoteImagesProxied && shown) responseHtml = proxyRemoteImages(shown, (raw) => imageProxyPath(id, raw));
-    return res.json({ ...splitDarkScheme(responseHtml), text: message.body_text, attachments, hasBlockedRemoteImages, remoteImagesBlocked, remoteImagesProxied, senderEmail: message.sender_email, senderName: message.sender_name, forwardedFromEmail: message.forwarded_from_email, forwardedFromName: message.forwarded_from_name, forwardedVia: message.forwarded_via, bccAddresses: bccOf(message) });
+    const imageStats = {};
+    if (remoteImagesProxied && shown) responseHtml = proxyRemoteImages(shown, (raw) => imageProxyPath(id, raw), imageStats);
+    return res.json({ ...splitDarkScheme(responseHtml), text: message.body_text, attachments, hasBlockedRemoteImages, remoteImagesBlocked, remoteImagesProxied, trackersBlocked: imageStats.trackers ?? 0, senderEmail: message.sender_email, senderName: message.sender_name, forwardedFromEmail: message.forwarded_from_email, forwardedFromName: message.forwarded_from_name, forwardedVia: message.forwarded_via, bccAddresses: bccOf(message) });
   }
 
   // Fetch from IMAP — signal user activity so background jobs back off during this request.
@@ -508,8 +510,9 @@ router.get('/messages/:id/body', async (req, res) => {
       hasBlockedRemoteImages = true;
     }
     const remoteImagesProxied = !remoteImagesBlocked;
-    if (remoteImagesProxied && sanitized) responseHtml = proxyRemoteImages(sanitized, (raw) => imageProxyPath(id, raw));
-    res.json({ ...splitDarkScheme(responseHtml), text: safeText, attachments: attachments || [], hasBlockedRemoteImages, remoteImagesBlocked, remoteImagesProxied, senderEmail: message.sender_email, senderName: message.sender_name, forwardedFromEmail: message.forwarded_from_email, forwardedFromName: message.forwarded_from_name, forwardedVia: message.forwarded_via, bccAddresses: bccOf(message) });
+    const imageStats = {};
+    if (remoteImagesProxied && sanitized) responseHtml = proxyRemoteImages(sanitized, (raw) => imageProxyPath(id, raw), imageStats);
+    res.json({ ...splitDarkScheme(responseHtml), text: safeText, attachments: attachments || [], hasBlockedRemoteImages, remoteImagesBlocked, remoteImagesProxied, trackersBlocked: imageStats.trackers ?? 0, senderEmail: message.sender_email, senderName: message.sender_name, forwardedFromEmail: message.forwarded_from_email, forwardedFromName: message.forwarded_from_name, forwardedVia: message.forwarded_via, bccAddresses: bccOf(message) });
   } catch (err) {
     const msg = err.message || 'Unknown error';
     console.error('Body fetch error:', msg);
@@ -818,7 +821,8 @@ router.get('/messages/:id/image', async (req, res) => {
   if (!url) return res.status(404).end();
 
   try {
-    const { bytes, type } = await imageProxyLimiter(req.session.userId, () => fetchProxiedImage(url));
+    // Oversized photos are scaled down on the way (services/imageShrink.js).
+    const { bytes, type } = await imageProxyLimiter(req.session.userId, () => fetchProxiedImage(url).then((image) => shrinkImage(image)));
     res.set({
       'Content-Type': type,
       'Content-Length': String(bytes.length),
