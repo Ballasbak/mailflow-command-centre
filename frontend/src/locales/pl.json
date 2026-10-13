@@ -245,6 +245,7 @@
     "print": "Drukuj",
     "showDark": "Pokaż w ciemnych kolorach",
     "showOriginal": "Pokaż oryginalne kolory",
+    "cannotShowDark": "Tej wiadomości nie można wyświetlić w trybie ciemnym bez pogorszenia czytelności tekstu",
     "printConversation": "Drukuj konwersację",
     "preparingPrint": "Przygotowywanie wydruku…",
     "more": "Więcej",

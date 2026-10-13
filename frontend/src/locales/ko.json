@@ -244,6 +244,7 @@
     "print": "인쇄",
     "showDark": "어두운 색으로 보기",
     "showOriginal": "원래 색으로 보기",
+    "cannotShowDark": "텍스트를 읽기 어렵게 만들지 않고는 이 이메일을 어둡게 표시할 수 없습니다",
     "summarize": "요약",
     "summary": "요약",
     "aiActions": "AI 액션",

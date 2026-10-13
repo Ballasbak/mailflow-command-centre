@@ -11,13 +11,16 @@ const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<'
 const pct = (n, d) => (d ? `${Math.round((n / d) * 100)}%` : '–');
 
 const MODE_NOTES = {
+  auto: 'What MailFlow shows: sender design, else recolored, else as sent',
+  recolor: 'MailFlow recoloring, forced',
+  sender: "Sender's own dark design, forced",
   naive: 'Theme background and text only',
-  phase1: "Sender's own dark design",
-  phase2: 'Recolored by MailFlow',
 };
+const OUTCOME = { sender: 'sender design', recolor: 'recolored', light: 'left as sent' };
 
 export function buildReport({ when, modes, summary, results }) {
-  const darkModes = modes.filter(m => m !== 'light');
+  // What MailFlow shows first, then the ways it is made of, then the naive baseline.
+  const darkModes = ['auto', 'recolor', 'sender', 'naive', ...modes].filter((m, i, all) => m !== 'light' && modes.includes(m) && all.indexOf(m) === i);
   const rows = darkModes.map(mode => {
     const t = summary[mode];
     return `<tr><th scope="row">${esc(mode)}<span class="note">${esc(MODE_NOTES[mode] || '')}</span></th>
@@ -27,13 +30,18 @@ export function buildReport({ when, modes, summary, results }) {
       <td>${t.medianBright === null ? '–' : `${Math.round(t.medianBright * 100)}%`}</td></tr>`;
   }).join('');
   const light = summary.light ?? { emails: results.filter(r => r.modes.light).length };
+  const auto = summary.auto;
+  const autoLine = auto?.outcomes ? `<p class="dim small">What MailFlow shows: ${Object.entries(OUTCOME).map(([k, label]) => `${label} ${auto.outcomes[k] || 0} (${pct(auto.outcomes[k] || 0, auto.emails)})`).join(', ')}.
+    Median bright area when shown dark ${auto.medianBrightShownDark === null ? '–' : `${Math.round(auto.medianBrightShownDark * 100)}%`}.
+    Time to show dark: median ${auto.ms.median} ms, 95th percentile ${auto.ms.p95} ms, slowest ${auto.ms.max} ms.
+    Put back as sent exactly: <span class="${summary.restoreMismatches ? 'bad' : ''}">${summary.restoreMismatches ? `${summary.restoreMismatches} mismatches` : 'every email'}</span>.</p>` : '';
 
   const cards = results.map(r => {
     const panels = darkModes.filter(m => r.modes[m]).map(mode => {
       const m = r.modes[mode];
       const worst = (m.worst || []).map(w => `<li><span class="ratio">${w.ratio}</span> <span class="dim">was ${w.lightRatio}</span> ${esc(w.sample)}</li>`).join('');
       return `<div class="panel" data-mode="${esc(mode)}" data-verdict="${esc(m.verdict)}" data-regressed="${m.regressed}" data-bright="${m.bright}">
-        <div class="tag ${esc(m.verdict)}">${esc(mode)} · ${esc(m.verdict)}${m.regressed ? ` · ${m.regressed} chars` : ''} · ${Math.round(m.bright * 100)}% bright</div>
+        <div class="tag ${esc(m.verdict)}">${esc(mode)}${m.outcome ? ` · ${esc(OUTCOME[m.outcome] || m.outcome)}` : ''} · ${esc(m.verdict)}${m.regressed ? ` · ${m.regressed} chars` : ''} · ${Math.round(m.bright * 100)}% bright${m.ms !== undefined ? ` · ${m.ms} ms` : ''}</div>
         <a href="shots/${esc(r.key)}-${esc(mode)}.jpg" target="_blank"><img loading="lazy" src="shots/${esc(r.key)}-${esc(mode)}.jpg" alt="${esc(mode)} render"></a>
         ${worst ? `<ul class="worst">${worst}</ul>` : ''}
       </div>`;
@@ -42,7 +50,7 @@ export function buildReport({ when, modes, summary, results }) {
     return `<article class="card" data-key="${esc(r.key)}">
       <header><strong>${esc(r.domain)}</strong> <span class="dim">${esc(r.fromName)}</span>
         <div class="subject">${esc(r.subject)}</div>
-        <div class="dim small">${esc(r.instance)} · ${esc(String(r.date || '').slice(0, 10))} · key ${esc(r.key)}${r.hasDarkCss ? ' · has dark design' : ''}${r.lightOnly ? ' · asks to stay light' : ''}${r.error ? ` · <span class="bad">error: ${esc(r.error)}</span>` : ''}</div>
+        <div class="dim small">${esc(r.instance)} · ${esc(String(r.date || '').slice(0, 10))} · key ${esc(r.key)}${r.hasDarkCss ? ' · has dark design' : ''}${r.lightOnly ? ' · asks to stay light' : ''}${r.restoreMismatch ? ' · <span class="bad">not put back exactly</span>' : ''}${r.error ? ` · <span class="bad">error: ${esc(r.error)}</span>` : ''}</div>
       </header>
       <div class="panels">
         ${l ? `<div class="panel" data-mode="light"><div class="tag">light · ${l.summary.unreadable ? `${l.summary.unreadable} chars unreadable as sent` : 'as sent'}</div><a href="shots/${esc(r.key)}-light.jpg" target="_blank"><img loading="lazy" src="shots/${esc(r.key)}-light.jpg" alt="light render"></a></div>` : ''}
@@ -81,6 +89,7 @@ export function buildReport({ when, modes, summary, results }) {
 <h1>Dark audit contact sheet</h1>
 <div class="dim">${esc(when)} · ${light.emails} emails · remote images were blocked, so they show as empty boxes</div>
 <table><thead><tr><th>Mode</th><th>Emails</th><th>Clean</th><th>Minor</th><th>Broken</th><th>Median bright area</th></tr></thead><tbody>${rows}</tbody></table>
+${autoLine}
 <div class="dim small">Clean: no text that reads in light becomes unreadable (contrast below 3:1). Minor: at most 1% of text, or 20 characters. Bright area: share of the email's pixels that are light; lower is darker.</div>
 <div class="controls" style="margin-top:16px">
   <label>Mode <select id="mode">${darkModes.map(m => `<option>${esc(m)}</option>`).join('')}</select></label>

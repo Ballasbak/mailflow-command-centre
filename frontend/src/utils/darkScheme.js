@@ -5,8 +5,10 @@
 // (backend emailSanitizer.js splitDarkScheme). The HTML itself is the sanitized email, so replies,
 // forwards and print reuse it as it is.
 //
-// Phase 1 shows dark only what is safe without touching the email's own colors: plain text, which
-// MailFlow draws itself, and HTML that ships its own dark design. Everything else stays as sent.
+// Plain text is drawn by MailFlow itself, in the theme's colors. HTML is shown dark in its frame
+// (utils/darkBody.js): with the sender's own dark design when it has one, otherwise recolored, and
+// left as sent whenever either would make text unreadable. Only a sender that asks to stay light
+// (color-scheme: only light) is never shown dark.
 import { THEMES, resolveEffectiveTheme } from '../themes.js';
 
 // A theme is dark when its background is: several themes besides "light" have light backgrounds
@@ -24,7 +26,7 @@ export function isDarkTheme(themeKey) {
 export function canShowDark(body) {
   if (!body) return false;
   if (!body.html) return Boolean(body.text);
-  return Boolean(body.darkCss) && !body.lightOnly;
+  return !body.lightOnly;
 }
 
 // Whether to show it dark now, in a dark theme and for a body that can be. `override` is this

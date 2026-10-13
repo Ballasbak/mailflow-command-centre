@@ -23,14 +23,17 @@ import { BUILTIN_SUMMARIZE } from '../aiActions.js';
 // document and a thread can run to dozens of messages. Only what the reader has opened is
 // ever rendered, which is how Gmail and Thunderbird handle the same problem.
 //
-function CardBtn({ onClick, children }) {
+// `disabled` is aria-disabled with the click ignored, so its title still explains why on hover.
+function CardBtn({ onClick, children, disabled = false, title }) {
   return (
     <button
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
+      title={title}
+      aria-disabled={disabled || undefined}
       style={{
         padding: '4px 10px', background: 'none', border: '1px solid var(--border)',
         borderRadius: 4, color: 'var(--text-primary)', font: 'inherit', fontSize: 13,
-        cursor: 'pointer',
+        cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1,
       }}
     >
       {children}
@@ -55,10 +58,14 @@ export default function ConversationMessageCard({ message, expanded, onToggle, o
   const theme = useStore(s => s.theme);
   const darkEmailBodies = useStore(s => s.darkEmailBodies);
   const [darkChoice, setDarkChoice] = useState(undefined);
-  // The background the frame's body shows when dark (see MessageBodyView onSurface).
-  const [frameSurface, setFrameSurface] = useState(null);
+  // What the frame last showed (see MessageBodyView onDarkResult).
+  const [darkResult, setDarkResult] = useState(null);
   const bodyDark = showDark({ body, themeKey: theme, setting: darkEmailBodies, override: darkChoice });
   const darkToggleShown = isDarkTheme(theme) && canShowDark(body);
+  // HTML asked for dark is left as sent when showing it dark would make text unreadable
+  // (utils/darkBody.js); until the frame says, it is taken as dark so the card does not flash.
+  const darkRefused = Boolean(body?.html) && bodyDark && darkResult?.requested === true && darkResult.outcome === 'light';
+  const shownDark = bodyDark && !darkRefused;
   const [loading, setLoading] = useState(false);
   const iframeRef = useRef(null);
   const emailScaleRef = useRef(1);
@@ -275,16 +282,16 @@ export default function ConversationMessageCard({ message, expanded, onToggle, o
               padding: '14px 16px 12px',
               // The frame's own background, so the card and the body read as one surface: the
               // sender's dark background where their design sets one, otherwise the theme's.
-              background: bodyDark ? (frameSurface || 'var(--bg-primary)') : 'white',
+              background: shownDark ? (darkResult?.surface || 'var(--bg-primary)') : 'white',
               borderRadius: 4,
-              border: bodyDark ? 'none' : '1px solid var(--border-subtle)',
+              border: shownDark ? 'none' : '1px solid var(--border-subtle)',
               overflow: 'hidden',
             }}>
               <MessageBodyView
                 iframeRef={iframeRef}
                 body={body}
                 dark={bodyDark}
-                onSurface={setFrameSurface}
+                onDarkResult={setDarkResult}
                 messageId={message.id}
                 emailScaleRef={emailScaleRef}
                 hasNativeContextTarget={false}
@@ -328,8 +335,12 @@ export default function ConversationMessageCard({ message, expanded, onToggle, o
             )}
             <CardBtn onClick={handlePrint}>{t('message.print')}</CardBtn>
             {darkToggleShown && (
-              <CardBtn onClick={() => setDarkChoice(bodyDark ? 'original' : 'dark')}>
-                {bodyDark ? t('message.showOriginal') : t('message.showDark')}
+              <CardBtn
+                onClick={() => setDarkChoice(bodyDark ? 'original' : 'dark')}
+                disabled={darkRefused}
+                title={darkRefused ? t('message.cannotShowDark') : undefined}
+              >
+                {shownDark ? t('message.showOriginal') : t('message.showDark')}
               </CardBtn>
             )}
             <CardBtn onClick={() => downloadEml(message.id)}>{t('message.downloadEml')}</CardBtn>

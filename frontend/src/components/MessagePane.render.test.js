@@ -885,11 +885,20 @@ describe('dark email bodies', () => {
     assert.equal(toggle().getAttribute('aria-label'), 'message.showOriginal');
   });
 
-  test('no toggle in a light theme, or for HTML without its own dark design', async () => {
+  test('HTML without its own dark design can be shown dark too: MailFlow recolors it', async () => {
+    await open('dark-html-plain', { html: '<p>plain html</p>', text: '' });
+    assert.equal(toggle().getAttribute('aria-label'), 'message.showDark');
+    await click(toggle());
+    assert.equal(toggle().getAttribute('aria-label'), 'message.showOriginal');
+    await open('dark-html-plain-2', { html: '<p>plain html</p>', text: '' }, { setting: true });
+    assert.equal(toggle().getAttribute('aria-label'), 'message.showOriginal');
+  });
+
+  test('no toggle in a light theme, or for HTML that asks to stay light', async () => {
     await open('dark-text-3', { text: 'plain words' }, { theme: 'light', setting: true });
     assert.equal(toggle(), undefined);
     assert.equal(textCard().style.background, 'white');
-    await open('dark-html-1', { html: '<p>plain html</p>', text: '' }, { setting: true });
+    await open('dark-html-1', { html: '<p>plain html</p>', text: '', lightOnly: true }, { setting: true });
     assert.equal(toggle(), undefined);
   });
 });

@@ -243,6 +243,7 @@
     "print": "Print",
     "showDark": "Show in dark colors",
     "showOriginal": "Show original colors",
+    "cannotShowDark": "This email can't be shown dark without making text hard to read",
     "printConversation": "Print conversation",
     "preparingPrint": "Preparing to print…",
     "more": "More",

@@ -220,8 +220,8 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
   const theme = useStore(s => s.theme);
   const darkEmailBodies = useStore(s => s.darkEmailBodies);
   const [darkChoice, setDarkChoice] = useState({});
-  // The background the frame's body shows when dark, per message (see MessageBodyView onSurface).
-  const [frameSurface, setFrameSurface] = useState(null);
+  // What the frame last showed, for which message (see MessageBodyView onDarkResult).
+  const [darkResult, setDarkResult] = useState(null);
   const spamFolderPaths = (() => {
     const mapped = account?.folder_mappings?.spam;
     if (mapped) return new Set([mapped]);
@@ -1480,10 +1480,19 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
   const darkCapable = Boolean(message) && !(USE_DIV_RENDER && body?.html);
   const bodyDark = darkCapable && showDark({ body, themeKey: theme, setting: darkEmailBodies, override: darkChoice[message.id] });
   const darkToggleShown = darkCapable && isDarkTheme(theme) && canShowDark(body);
-  const toggleDark = () => setDarkChoice(choice => ({ ...choice, [message.id]: bodyDark ? 'original' : 'dark' }));
-  const darkToggleLabel = bodyDark ? t('message.showOriginal') : t('message.showDark');
+  // What the frame actually shows: HTML asked for dark is left as sent when showing it dark would
+  // make text unreadable (utils/darkBody.js). Until the frame says, it is taken as dark, so the
+  // card does not flash white.
+  const frameResult = darkResult?.id === selectedMessageId ? darkResult : null;
+  const darkRefused = Boolean(body?.html) && bodyDark && frameResult?.requested === true && frameResult.outcome === 'light';
+  const shownDark = bodyDark && !darkRefused;
+  const toggleDark = () => {
+    if (darkRefused) return;
+    setDarkChoice(choice => ({ ...choice, [message.id]: bodyDark ? 'original' : 'dark' }));
+  };
+  const darkToggleLabel = darkRefused ? t('message.cannotShowDark') : shownDark ? t('message.showOriginal') : t('message.showDark');
   // A sun to go back to the original colors, a moon to show it dark.
-  const darkToggleIcon = bodyDark ? (
+  const darkToggleIcon = shownDark ? (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
       <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
     </svg>
@@ -1909,7 +1918,8 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
                 {darkToggleShown && (
                   <div
                     onClick={() => { toggleDark(); setShowMoreMenu(false); }}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', cursor: 'pointer', fontSize: 13, color: 'var(--text-primary)', borderBottom: '1px solid var(--border-subtle)' }}
+                    aria-disabled={darkRefused || undefined}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', cursor: darkRefused ? 'default' : 'pointer', fontSize: 13, color: 'var(--text-primary)', borderBottom: '1px solid var(--border-subtle)', opacity: darkRefused ? 0.55 : 1 }}
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
@@ -2022,7 +2032,7 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
               </svg>
             </PaneBtn>
             {darkToggleShown && (
-              <PaneBtn onClick={toggleDark} title={darkToggleLabel} aria-label={darkToggleLabel} aria-pressed={bodyDark}>
+              <PaneBtn onClick={toggleDark} title={darkToggleLabel} aria-label={darkToggleLabel} aria-pressed={shownDark} disabled={darkRefused}>
                 {darkToggleIcon}
               </PaneBtn>
             )}
@@ -2583,9 +2593,9 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
             padding: '14px 16px 12px',
             // The frame's own background, so the card and the body read as one surface: the
             // sender's dark background where their design sets one, otherwise the theme's.
-            background: bodyDark ? ((frameSurface?.id === selectedMessageId && frameSurface.color) || 'var(--bg-primary)') : 'white',
+            background: shownDark ? (frameResult?.surface || 'var(--bg-primary)') : 'white',
             borderRadius: isMobile ? 0 : 10,
-            border: isMobile || bodyDark ? 'none' : '1px solid var(--border-subtle)',
+            border: isMobile || shownDark ? 'none' : '1px solid var(--border-subtle)',
             overflow: 'hidden',
             // contain:layout establishes a containing block for any position:fixed
             // descendants (including the inner email div if email CSS repositions it).
@@ -2622,7 +2632,7 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
                 iframeRef={iframeRef}
                 body={body}
                 dark={bodyDark}
-                onSurface={color => setFrameSurface({ id: selectedMessageId, color })}
+                onDarkResult={result => setDarkResult({ id: selectedMessageId, ...result })}
                 messageId={selectedMessageId}
                 emailScaleRef={emailScaleRef}
                 hasNativeContextTarget={hasNativeContextTarget}
@@ -2976,14 +2986,17 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
   );
 }
 
-function PaneBtn({ children, onClick, title, danger, style: extraStyle, 'aria-label': ariaLabel, 'aria-pressed': ariaPressed }) {
+// `disabled` is aria-disabled with the click ignored, not the native attribute, so the title still
+// shows on hover: it is what explains why.
+function PaneBtn({ children, onClick, title, danger, style: extraStyle, 'aria-label': ariaLabel, 'aria-pressed': ariaPressed, disabled = false }) {
   const [hov, setHov] = useState(false);
   return (
     <button
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
       title={title}
       aria-label={ariaLabel}
       aria-pressed={ariaPressed}
+      aria-disabled={disabled || undefined}
       className="btn-press"
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
@@ -2992,9 +3005,10 @@ function PaneBtn({ children, onClick, title, danger, style: extraStyle, 'aria-la
         border: '1px solid ' + (hov ? (danger ? 'rgba(248,113,113,0.3)' : 'var(--border)') : 'transparent'),
         borderRadius: 6, padding: '6px 8px',
         color: danger ? (hov ? 'var(--red)' : 'var(--text-tertiary)') : 'var(--text-secondary)',
-        cursor: 'pointer', fontSize: 13,
+        cursor: disabled ? 'default' : 'pointer', fontSize: 13,
         display: 'flex', alignItems: 'center', gap: 5,
         transition: 'all 0.1s',
+        opacity: disabled ? 0.45 : 1,
         ...extraStyle,
       }}
     >

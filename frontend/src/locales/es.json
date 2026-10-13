@@ -243,6 +243,7 @@
     "print": "Imprimir",
     "showDark": "Mostrar en colores oscuros",
     "showOriginal": "Mostrar colores originales",
+    "cannotShowDark": "Este correo no se puede mostrar oscuro sin que el texto sea difícil de leer",
     "printConversation": "Imprimir conversación",
     "preparingPrint": "Preparando la impresión…",
     "more": "Más",

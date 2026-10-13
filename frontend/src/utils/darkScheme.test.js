@@ -16,11 +16,12 @@ describe('isDarkTheme', () => {
 });
 
 describe('which bodies can be shown dark', () => {
-  test('plain text, and HTML with its own dark design that does not ask to stay light', () => {
+  test('plain text, and any HTML that does not ask to stay light', () => {
     assert.equal(canShowDark(TEXT), true);
     assert.equal(canShowDark(DARK_DESIGN), true);
-    assert.equal(canShowDark(PLAIN_HTML), false, 'phase 1 leaves other HTML as sent');
+    assert.equal(canShowDark(PLAIN_HTML), true, 'recolored by MailFlow');
     assert.equal(canShowDark({ ...DARK_DESIGN, darkCss: null, lightOnly: true }), false);
+    assert.equal(canShowDark({ ...PLAIN_HTML, lightOnly: true }), false);
     assert.equal(canShowDark(null), false);
   });
 });
@@ -36,7 +37,8 @@ describe('shown dark', () => {
     assert.equal(showDark({ body: DARK_DESIGN, themeKey: 'dark', setting: true }), true);
     assert.equal(showDark({ body: DARK_DESIGN, themeKey: 'dark', setting: false, override: 'dark' }), true);
     assert.equal(showDark({ body: DARK_DESIGN, themeKey: 'dark', setting: true, override: 'original' }), false);
-    assert.equal(showDark({ body: PLAIN_HTML, themeKey: 'dark', setting: true, override: 'dark' }), false);
+    assert.equal(showDark({ body: PLAIN_HTML, themeKey: 'dark', setting: true }), true);
+    assert.equal(showDark({ body: { ...PLAIN_HTML, lightOnly: true }, themeKey: 'dark', setting: true, override: 'dark' }), false);
   });
 
   test('never in a light theme', () => {

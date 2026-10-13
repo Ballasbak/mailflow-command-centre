@@ -243,6 +243,7 @@
     "print": "Drucken",
     "showDark": "Dunkel anzeigen",
     "showOriginal": "Originalfarben anzeigen",
+    "cannotShowDark": "Diese E-Mail kann nicht dunkel angezeigt werden, ohne dass Text schwer lesbar wird",
     "printConversation": "Unterhaltung drucken",
     "preparingPrint": "Druck wird vorbereitet…",
     "more": "Mehr",

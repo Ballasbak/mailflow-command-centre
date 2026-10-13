@@ -1,198 +1,179 @@
 // Dark-mode audit (#228), step 2 of 3: render each prepared email the way the reader does and score
-// how readable each way of showing it is.
+// each way of showing it dark.
 //
-//   node scripts/dark-audit/audit.mjs <corpus-dir> [--modes light,naive,phase1] [--limit N] [--only key,key]
+//   node scripts/dark-audit/audit.mjs <corpus-dir> [--limit N] [--only key,key]
 //
-// Every email is rendered with the reader's own frame document (frontend utils/emailFrameDoc.js) in
-// Chromium, at a reading-pane width, with ALL network requests blocked: rendering hundreds of real
-// newsletters must not load their tracking pixels and mark them opened. Remote images therefore
-// show as empty boxes.
+// Every email is loaded into an email frame set up as the reader's (harness.html), with the
+// reader's own modules, in Chromium at a reading-pane width. ALL network requests are blocked,
+// apart from the harness page and those modules, which this script serves from the repo:
+// rendering hundreds of real newsletters must not load their tracking pixels and mark them
+// opened. Remote images therefore show as empty boxes.
 //
-// Modes:
-//   light   as sent, forced light: the baseline every other mode is compared with
-//   naive   the theme's dark background and text, nothing else (the approach declined on #228)
-//   phase1  the sender's own dark design, for emails that carry one
+// Ways of showing an email, each scored against the email as sent:
+//   light    as sent: the baseline
+//   naive    the theme's dark background and text, nothing else (the approach declined on #228)
+//   sender   the sender's own dark design, forced, for emails that carry one
+//   recolor  MailFlow's recoloring, forced
+//   auto     what the reader shows: the sender's design, else the recoloring, else as sent,
+//            whichever first leaves all text readable (utils/darkBody.js)
+// Emails that ask to stay light are never shown dark by the reader, so only their light render
+// is recorded.
 //
-// For each mode it records the contrast of every piece of visible text (utils/emailContrast.js),
-// the text that is readable in light but not in this mode ("regressed"), and the share of the
-// email's area that is bright. Results and screenshots go to <corpus-dir>/audit/.
+// For each it records the text that reads as sent but not any more ("regressed"), the share of the
+// email's area that is bright, and for auto the outcome and how long it took. After every way has
+// been tried, the email is put back as sent and measured again: that must match the first
+// measurement exactly, or putting an email back is not exact ("restore mismatch").
+//
+// Results and screenshots go to <corpus-dir>/audit/.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { extname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
-import { buildFrameDoc, DARK_DEFAULTS } from '../../frontend/src/utils/emailFrameDoc.js';
-import { summarize, parseColor, UNREADABLE, HIDDEN } from '../../frontend/src/utils/emailContrast.js';
-import { measureContentHeight } from '../../frontend/src/utils/emailFrameHeight.js';
+import { summarize, compareWithLight } from '../../frontend/src/utils/emailContrast.js';
 import { PREPARED } from './prepare.mjs';
 
 export const WIDTH = 720;
-export const MAX_HEIGHT = 1400;
-export const ALL_MODES = ['light', 'naive', 'phase1'];
+export const DARK_MODES = ['naive', 'sender', 'recolor', 'auto'];
+const HOST = 'harness.mailflow.invalid';
+const REPO = resolve(fileURLToPath(new URL('../..', import.meta.url)));
+// The only paths the harness host answers; anything else on it is blocked like any other request.
+const SERVED = /^\/(scripts\/dark-audit\/harness\.html|frontend\/src\/utils\/[A-Za-z]+\.js)$/;
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript' };
 
-// The measuring code runs inside the rendered email. The frame's CSP forbids scripts, so it is
-// evaluated over the DevTools protocol (which the CSP does not govern) as one expression.
-const CONTRAST_SOURCE = readFileSync(new URL('../../frontend/src/utils/emailContrast.js', import.meta.url), 'utf8')
-  .replace(/^export /gm, '');
-const measureExpression = (canvas) =>
-  `(() => { ${CONTRAST_SOURCE}\n return measureTextContrast(document, { canvas: ${JSON.stringify(canvas)}, samples: true }); })()`;
+const applies = (email, mode) => !email.lightOnly && (mode !== 'sender' || Boolean(email.darkCss));
 
-const LIGHT_CANVAS = { r: 255, g: 255, b: 255, a: 1 };
-const hexToRgb = (hex) => {
-  const n = Number.parseInt(hex.slice(1), 16);
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255, a: 1 };
-};
-const DARK_CANVAS = parseColor(DARK_DEFAULTS.background) ?? hexToRgb(DARK_DEFAULTS.background);
-
-export function frameDocFor(email, mode) {
-  if (mode === 'light') return buildFrameDoc({ html: email.html });
-  if (mode === 'naive') return buildFrameDoc({ html: email.html, dark: true, palette: DARK_DEFAULTS });
-  if (mode === 'phase1') return buildFrameDoc({ html: email.html, dark: true, palette: DARK_DEFAULTS, darkCss: email.darkCss });
-  throw new Error(`unknown mode ${mode}`);
+// Whether two light measurements of the same email are the same.
+function sameMeasurement(a, b) {
+  if (a.length !== b.length) return false;
+  return a.every((e, i) => e.i === b[i].i && e.chars === b[i].chars && e.ratio === b[i].ratio && e.overImage === b[i].overImage);
 }
 
-export const appliesTo = (email, mode) => mode !== 'phase1' || (Boolean(email.darkCss) && !email.lightOnly);
-
-// Text readable in light (and not hidden by the sender there) that this mode makes unreadable.
-export function compareWithLight(light, other) {
-  const base = new Map(light.map(e => [e.i, e]));
-  let counted = 0;
-  let regressed = 0;
-  const worst = [];
-  for (const e of other) {
-    const l = base.get(e.i);
-    // Not shown in light, or shown at (almost) no contrast there: the sender's own hidden text.
-    if (!l || l.ratio === null || l.ratio < HIDDEN || l.overImage) continue;
-    if (e.overImage || e.ratio === null) continue;
-    counted += e.chars;
-    if (e.ratio < UNREADABLE && l.ratio >= UNREADABLE) {
-      regressed += e.chars;
-      worst.push({ ratio: e.ratio, lightRatio: l.ratio, chars: e.chars, sample: e.sample, color: e.color, background: e.background });
-    }
-  }
-  worst.sort((a, b) => a.ratio - b.ratio || b.chars - a.chars);
-  const verdict = regressed === 0 ? 'clean' : regressed <= Math.max(20, counted * 0.01) ? 'minor' : 'broken';
-  return { counted, regressed, verdict, worst: worst.slice(0, 6) };
-}
-
-// Share of the screenshot's pixels that are bright (relative luminance above 0.6), worked out in a
-// plain helper page.
-async function brightShare(helper, png) {
-  return helper.evaluate(async (b64) => {
-    const img = new Image();
-    img.src = `data:image/png;base64,${b64}`;
-    await img.decode();
-    const canvas = document.createElement('canvas');
-    canvas.width = img.width;
-    canvas.height = img.height;
-    const g = canvas.getContext('2d');
-    g.drawImage(img, 0, 0);
-    const d = g.getImageData(0, 0, canvas.width, canvas.height).data;
-    let bright = 0;
-    let n = 0;
-    for (let i = 0; i < d.length; i += 16) {
-      const lin = (c) => { const s = c / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
-      if (0.2126 * lin(d[i]) + 0.7152 * lin(d[i + 1]) + 0.0722 * lin(d[i + 2]) > 0.6) bright += 1;
-      n += 1;
-    }
-    return Math.round((bright / n) * 1000) / 1000;
-  }, png.toString('base64'));
-}
-
-async function renderOne(page, helper, email, mode, shotsDir) {
-  await page.setContent(frameDocFor(email, mode), { waitUntil: 'load', timeout: 20000 });
-  const entries = await page.evaluate(measureExpression(mode === 'light' ? LIGHT_CANVAS : DARK_CANVAS));
-  // The email's own height, measured as the reader sizes its frame. The document's scroll height
-  // would not do: it never drops below the viewport, so short emails would count empty canvas.
-  const measured = measureContentHeight(await page.evaluate(`(() => {
-    const w = document.getElementById('mf-scale-wrapper');
-    return { wrapperOffsetHeight: w?.offsetHeight, wrapperOffsetTop: w?.offsetTop,
-      bodyScrollHeight: document.body.scrollHeight, bodyOffsetHeight: document.body.offsetHeight };
-  })()`));
-  const height = Math.max(1, Math.min(MAX_HEIGHT, Math.ceil(measured)));
-  const clip = { x: 0, y: 0, width: WIDTH, height };
-  const png = await page.screenshot({ clip });
-  if (shotsDir) await page.screenshot({ clip, type: 'jpeg', quality: 55, path: join(shotsDir, `${email.key}-${mode}.jpg`) });
-  return { entries, height, bright: await brightShare(helper, png) };
-}
-
-// `stats` counts every request the emails made and how many the harness blocked; the self-test
-// asserts they are equal.
-export async function auditEmails(emails, { modes = ALL_MODES, shotsDir = null, concurrency = 4, onProgress, stats = {} } = {}) {
+// `stats` counts every request the emails and the harness made, how many were served from the repo
+// and how many blocked; the self-test asserts nothing else happened.
+export async function auditEmails(emails, { shotsDir = null, onProgress, stats = {} } = {}) {
   const browser = await chromium.launch();
-  const context = await browser.newContext({ viewport: { width: WIDTH, height: MAX_HEIGHT }, javaScriptEnabled: true });
-  // Nothing leaves the machine: not images, fonts, stylesheets or tracking pixels.
+  const context = await browser.newContext({ viewport: { width: WIDTH, height: 1500 } });
   stats.requests = 0;
+  stats.served = 0;
   stats.blocked = 0;
   context.on('request', () => { stats.requests += 1; });
-  await context.route('**/*', route => { stats.blocked += 1; return route.abort(); });
-  const helper = await context.newPage();
-  const results = [];
-  let next = 0;
-  let done = 0;
-  const worker = async () => {
-    const page = await context.newPage();
-    while (next < emails.length) {
-      const email = emails[next++];
-      const result = {
-        key: email.key, instance: email.instance, domain: email.domain, fromName: email.fromName,
-        subject: email.subject, date: email.date, hasDarkCss: Boolean(email.darkCss), lightOnly: email.lightOnly,
-        modes: {},
-      };
-      try {
-        const light = await renderOne(page, helper, email, 'light', shotsDir);
-        result.modes.light = { summary: summarize(light.entries), bright: light.bright, height: light.height };
-        for (const mode of modes) {
-          if (mode === 'light' || !appliesTo(email, mode)) continue;
-          const shown = await renderOne(page, helper, email, mode, shotsDir);
-          result.modes[mode] = {
-            summary: summarize(shown.entries), bright: shown.bright, height: shown.height,
-            ...compareWithLight(light.entries, shown.entries),
-          };
-        }
-      } catch (err) {
-        result.error = err.message.split('\n')[0];
-      }
-      results.push(result);
-      done += 1;
-      onProgress?.(done, emails.length);
+  await context.route('**/*', route => {
+    const url = new URL(route.request().url());
+    if (url.protocol === 'http:' && url.host === HOST && SERVED.test(url.pathname)) {
+      stats.served += 1;
+      return route.fulfill({ path: join(REPO, url.pathname), contentType: TYPES[extname(url.pathname)] });
     }
-    await page.close();
+    stats.blocked += 1;
+    return route.abort();
+  });
+  const page = await context.newPage();
+  await page.goto(`http://${HOST}/scripts/dark-audit/harness.html`);
+  await page.waitForFunction('window.harnessReady === true');
+  const frame = page.locator('#frame');
+
+  const shoot = async (key, mode) => {
+    const png = await frame.screenshot();
+    if (shotsDir) await frame.screenshot({ type: 'jpeg', quality: 55, path: join(shotsDir, `${key}-${mode}.jpg`) });
+    return page.evaluate(b64 => window.harness.brightShare(b64), png.toString('base64'));
   };
-  await Promise.all(Array.from({ length: Math.min(concurrency, emails.length) }, worker));
+
+  const results = [];
+  for (const [index, email] of emails.entries()) {
+    const result = {
+      key: email.key, instance: email.instance, domain: email.domain, fromName: email.fromName,
+      subject: email.subject, date: email.date, hasDarkCss: Boolean(email.darkCss), lightOnly: email.lightOnly,
+      modes: {},
+    };
+    try {
+      const height = await page.evaluate(([html, css]) => window.harness.load(html, css), [email.html, email.darkCss]);
+      const light = await page.evaluate(() => window.harness.light());
+      result.modes.light = { summary: summarize(light), bright: await shoot(email.key, 'light'), height };
+      for (const mode of DARK_MODES) {
+        if (!applies(email, mode)) continue;
+        const shown = await page.evaluate(m => window.harness.show(m), mode);
+        const entry = {
+          summary: summarize(shown.dark),
+          bright: await shoot(email.key, mode),
+          height: shown.height,
+          ...compareWithLight(light, shown.dark),
+        };
+        if (mode === 'auto') {
+          entry.outcome = shown.outcome;
+          entry.ms = Math.round(shown.ms * 10) / 10;
+          entry.attempts = shown.attempts.map(a => ({ kind: a.kind, verdict: a.verdict, regressed: a.regressed }));
+        }
+        result.modes[mode] = entry;
+      }
+      await page.evaluate(() => window.harness.restore());
+      const again = await page.evaluate(() => window.harness.light());
+      result.restoreMismatch = !sameMeasurement(light, again);
+    } catch (err) {
+      result.error = err.message.split('\n')[0];
+    }
+    results.push(result);
+    onProgress?.(index + 1, emails.length);
+  }
   await browser.close();
   return results;
 }
 
-export function totals(results, modes = ALL_MODES) {
+const percentile = (values, p) => {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
+};
+
+export function totals(results) {
   const out = {};
-  for (const mode of modes) {
+  for (const mode of ['light', ...DARK_MODES]) {
     const rows = results.filter(r => r.modes[mode]);
-    const brights = rows.map(r => r.modes[mode].bright).sort((a, b) => a - b);
-    out[mode] = {
-      emails: rows.length,
-      clean: rows.filter(r => r.modes[mode].verdict === 'clean').length,
-      minor: rows.filter(r => r.modes[mode].verdict === 'minor').length,
-      broken: rows.filter(r => r.modes[mode].verdict === 'broken').length,
-      medianBright: brights.length ? brights[Math.floor(brights.length / 2)] : null,
-    };
+    const t = { emails: rows.length, medianBright: percentile(rows.map(r => r.modes[mode].bright), 0.5) };
+    if (mode !== 'light') {
+      for (const verdict of ['clean', 'minor', 'broken']) t[verdict] = rows.filter(r => r.modes[mode].verdict === verdict).length;
+    }
+    if (mode === 'auto') {
+      t.outcomes = {};
+      for (const r of rows) t.outcomes[r.modes.auto.outcome] = (t.outcomes[r.modes.auto.outcome] || 0) + 1;
+      const darkRows = rows.filter(r => r.modes.auto.outcome !== 'light');
+      t.medianBrightShownDark = percentile(darkRows.map(r => r.modes.auto.bright), 0.5);
+      const ms = rows.map(r => r.modes.auto.ms);
+      t.ms = { median: percentile(ms, 0.5), p95: percentile(ms, 0.95), max: percentile(ms, 1) };
+    }
+    out[mode] = t;
   }
+  out.restoreMismatches = results.filter(r => r.restoreMismatch).length;
+  out.errors = results.filter(r => r.error).length;
   return out;
 }
 
 function parseArgs(argv) {
-  const args = { dir: null, modes: ALL_MODES, limit: Infinity, only: null };
+  const args = { dir: null, limit: Infinity, only: null };
   for (let i = 0; i < argv.length; i += 1) {
-    if (argv[i] === '--modes') args.modes = argv[++i].split(',');
-    else if (argv[i] === '--limit') args.limit = Number(argv[++i]);
+    if (argv[i] === '--limit') args.limit = Number(argv[++i]);
     else if (argv[i] === '--only') args.only = new Set(argv[++i].split(','));
     else args.dir = argv[i];
   }
   return args;
 }
 
+const pct = (n, d) => (d ? `${Math.round((n / d) * 100)}%` : '-');
+
+export function printTotals(t, log = console.log) {
+  log(`light    emails ${String(t.light.emails).padStart(4)}  (the baseline)  median bright ${t.light.medianBright}`);
+  for (const mode of DARK_MODES) {
+    const m = t[mode];
+    log(`${mode.padEnd(8)} emails ${String(m.emails).padStart(4)}  clean ${String(m.clean).padStart(4)}  minor ${String(m.minor).padStart(4)}  broken ${String(m.broken).padStart(4)}  median bright ${m.medianBright}`);
+  }
+  const a = t.auto;
+  const o = a.outcomes;
+  log(`auto outcomes: sender design ${o.sender || 0} (${pct(o.sender || 0, a.emails)}), recolored ${o.recolor || 0} (${pct(o.recolor || 0, a.emails)}), left as sent ${o.light || 0} (${pct(o.light || 0, a.emails)})`);
+  log(`auto median bright when shown dark ${a.medianBrightShownDark}; time median ${a.ms.median} ms, p95 ${a.ms.p95} ms, max ${a.ms.max} ms`);
+  log(`restore mismatches ${t.restoreMismatches}, errors ${t.errors}`);
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const args = parseArgs(process.argv.slice(2));
-  if (!args.dir) { console.error('usage: audit.mjs <corpus-dir> [--modes ...] [--limit N] [--only keys]'); process.exit(2); }
+  if (!args.dir) { console.error('usage: audit.mjs <corpus-dir> [--limit N] [--only keys]'); process.exit(2); }
   let emails = readFileSync(join(args.dir, PREPARED), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l));
   if (args.only) emails = emails.filter(e => args.only.has(e.key));
   emails = emails.slice(0, args.limit);
@@ -200,15 +181,13 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const shotsDir = join(outDir, 'shots');
   mkdirSync(shotsDir, { recursive: true });
   const started = Date.now();
+  const stats = {};
   const results = await auditEmails(emails, {
-    modes: args.modes, shotsDir,
+    shotsDir, stats,
     onProgress: (done, total) => { if (done % 50 === 0 || done === total) console.error(`${done}/${total}`); },
   });
-  const summary = totals(results, args.modes);
-  writeFileSync(join(outDir, 'results.json'), JSON.stringify({ when: new Date().toISOString(), modes: args.modes, summary, results }, null, 1));
-  console.log(`audited ${results.length} emails in ${Math.round((Date.now() - started) / 1000)}s, ${results.filter(r => r.error).length} errors`);
-  for (const [mode, t] of Object.entries(summary)) {
-    if (mode === 'light') { console.log(`light   emails ${String(t.emails).padStart(4)}  (the baseline)  median bright ${t.medianBright}`); continue; }
-    console.log(`${mode.padEnd(7)} emails ${String(t.emails).padStart(4)}  clean ${String(t.clean).padStart(4)}  minor ${String(t.minor).padStart(4)}  broken ${String(t.broken).padStart(4)}  median bright ${t.medianBright}`);
-  }
+  const summary = totals(results);
+  writeFileSync(join(outDir, 'results.json'), JSON.stringify({ when: new Date().toISOString(), modes: ['light', ...DARK_MODES], summary, results }, null, 1));
+  console.log(`audited ${results.length} emails in ${Math.round((Date.now() - started) / 1000)}s; ${stats.blocked} network requests blocked`);
+  printTotals(summary);
 }

@@ -243,6 +243,7 @@
     "print": "Stampa",
     "showDark": "Mostra in colori scuri",
     "showOriginal": "Mostra i colori originali",
+    "cannotShowDark": "Questa email non può essere mostrata scura senza rendere il testo difficile da leggere",
     "printConversation": "Stampa conversazione",
     "preparingPrint": "Preparazione della stampa…",
     "more": "Altro",

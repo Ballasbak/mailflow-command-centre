@@ -243,6 +243,7 @@
     "print": "打印",
     "showDark": "以深色显示",
     "showOriginal": "显示原始颜色",
+    "cannotShowDark": "无法以深色显示此邮件，否则文字将难以阅读",
     "printConversation": "打印会话",
     "preparingPrint": "正在准备打印…",
     "more": "更多",

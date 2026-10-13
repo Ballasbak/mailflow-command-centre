@@ -72,36 +72,53 @@ const frameDoc = async (props) => {
 const setVar = (name, value) => document.documentElement.style.setProperty(name, value);
 
 describe('the email frame (#228)', () => {
-  test("as sent: forced light, without the sender's dark CSS", async () => {
+  // The document always renders the email as sent; showing it dark switches styles in place
+  // (utils/darkBody.js), so these are all present from the start.
+  const styleOf = (doc, id) => new RegExp(`<style id="${id}"( media="not all")?>([\\s\\S]*?)</style>`).exec(doc);
+
+  test("as sent: forced light, with the dark styles and the sender's dark CSS switched off", async () => {
     const doc = await frameDoc({ dark: false });
     assert.match(doc, /<meta name="color-scheme" content="only light">/);
-    assert.match(doc, /background-color: #ffffff !important; color-scheme: light;/);
-    assert.doesNotMatch(doc, /color:#eee/);
+    const light = styleOf(doc, 'mf-frame-light');
+    assert.equal(light[1], undefined, 'the light styles are on');
+    assert.match(light[2], /background-color: #ffffff !important; color-scheme: light;/);
+    assert.equal(styleOf(doc, 'mf-frame-dark')[1], ' media="not all"');
+    const sender = styleOf(doc, 'mf-sender-dark');
+    assert.equal(sender[1], ' media="not all"');
+    assert.equal(sender[2], '@media (min-width: 0px){.a{color:#eee}}');
   });
 
-  test("dark: the theme's colors, then the sender's dark CSS so it can override them", async () => {
+  test("the theme's colors go into MailFlow's dark styles, then the sender's dark CSS so it can override them", async () => {
     setVar('--bg-primary', '#101820'); setVar('--text-primary', '#e0e6ee'); setVar('--accent', '#7c6af7');
     const doc = await frameDoc({ dark: true });
-    assert.match(doc, /<meta name="color-scheme" content="dark">/);
-    assert.match(doc, /background-color: #101820; color-scheme: dark;/, 'not !important, so the sender can set it');
-    assert.match(doc, /color: #e0e6ee;/);
-    assert.match(doc, /a \{ color: #7c6af7; \}/);
-    const base = doc.indexOf('blockquote {');
-    const sender = doc.indexOf('<style>@media (min-width: 0px){.a{color:#eee}}</style>');
-    assert.ok(sender > base && base > 0, "the sender's dark CSS comes after MailFlow's styles");
+    const dark = styleOf(doc, 'mf-frame-dark')[2];
+    assert.match(dark, /background-color: #101820; color-scheme: dark;/, 'not !important, so the sender can set it');
+    assert.match(dark, /color: #e0e6ee;/);
+    assert.match(dark, /a \{ color: #7c6af7; \}/);
+    const order = ['mf-frame-light', 'mf-frame-dark', 'mf-sender-dark'].map(id => doc.indexOf(`<style id="${id}"`));
+    assert.ok(doc.indexOf('pre, code {') < order[0] && order[0] < order[1] && order[1] < order[2],
+      "MailFlow's styles, then its light and dark colors, then the sender's dark CSS");
+    assert.ok(doc.indexOf('<p class="a">Hi</p>') < order[0], 'all after the email');
+  });
+
+  test('switching dark on or off does not reload the frame', async () => {
+    const off = await frameDoc({ dark: false });
+    const on = await frameDoc({ dark: true });
+    assert.equal(on, off);
   });
 
   test('a theme color that is not a plain color is not written into the frame', async () => {
     setVar('--bg-primary', 'red;}</style><p>injected');
     const doc = await frameDoc({ dark: true });
     assert.doesNotMatch(doc, /injected/);
-    assert.match(doc, /background-color: #0f0f11;/, 'falls back to the default dark background');
+    assert.match(styleOf(doc, 'mf-frame-dark')[2], /background-color: #0f0f11;/, 'falls back to the default dark background');
     setVar('--bg-primary', '#101820');
   });
 
   test("dark CSS that could close its style element is left out", async () => {
     const doc = await frameDoc({ dark: true, body: { html: '<p>x</p>', darkCss: 'p{color:#eee}</style><p>injected' } });
     assert.doesNotMatch(doc, /injected/);
+    assert.equal(styleOf(doc, 'mf-sender-dark')[2], '');
   });
 });
 

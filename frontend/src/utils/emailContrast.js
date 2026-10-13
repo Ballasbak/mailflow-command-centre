@@ -50,7 +50,8 @@ export function contrastRatio(a, b) {
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
 
-const SKIP_PARENTS = new Set(['STYLE', 'SCRIPT', 'NOSCRIPT', 'TEMPLATE', 'TITLE', 'HEAD']);
+// Not <noscript>: the email frame runs without scripts, so a browser shows its content as text.
+const SKIP_PARENTS = new Set(['STYLE', 'SCRIPT', 'TEMPLATE', 'TITLE', 'HEAD']);
 const CLIPPING = new Set(['hidden', 'clip', 'auto', 'scroll']);
 const WHITE = { r: 255, g: 255, b: 255, a: 1 };
 
@@ -171,4 +172,28 @@ export function summarize(entries) {
     if (out.worst === null || e.ratio < out.worst) out.worst = e.ratio;
   }
   return out;
+}
+
+// What showing an email another way did to its text, against the email as sent (`light`), piece
+// by piece: text that read as sent (and was not hidden by the sender) but does not any more.
+// 'clean' means none, 'minor' at most 1% of the text or 20 characters, otherwise 'broken'.
+export function compareWithLight(light, other) {
+  const base = new Map(light.map(e => [e.i, e]));
+  let counted = 0;
+  let regressed = 0;
+  const worst = [];
+  for (const e of other) {
+    const l = base.get(e.i);
+    // Not shown in light, or shown at (almost) no contrast there: the sender's own hidden text.
+    if (!l || l.ratio === null || l.ratio < HIDDEN || l.overImage) continue;
+    if (e.overImage || e.ratio === null) continue;
+    counted += e.chars;
+    if (e.ratio < UNREADABLE && l.ratio >= UNREADABLE) {
+      regressed += e.chars;
+      worst.push({ ratio: e.ratio, lightRatio: l.ratio, chars: e.chars, sample: e.sample, color: e.color, background: e.background });
+    }
+  }
+  worst.sort((a, b) => a.ratio - b.ratio || b.chars - a.chars);
+  const verdict = regressed === 0 ? 'clean' : regressed <= Math.max(20, counted * 0.01) ? 'minor' : 'broken';
+  return { counted, regressed, verdict, worst: worst.slice(0, 6) };
 }
