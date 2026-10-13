@@ -993,7 +993,7 @@
       "title": "Apariencia",
       "description": "Elige un tema de color para la interfaz",
       "darkEmailBodies": "Cuerpo de correo oscuro",
-      "darkEmailBodiesDesc": "Con un tema oscuro, muestra en colores oscuros los mensajes de texto sin formato y los correos que traen su propio diseño oscuro. Los demás correos se ven como se enviaron, y puedes cambiar cada mensaje por separado.",
+      "darkEmailBodiesDesc": "Con un tema oscuro, muestra también los correos HTML en colores oscuros: con el diseño oscuro del remitente si lo tiene y, si no, recoloreados por MailFlow. Un correo se ve como se envió cuando lo pide o cuando mostrarlo oscuro haría el texto difícil de leer. Puedes cambiar cada mensaje por separado.",
       "typography": "Tipografía",
       "typographyDescription": "Elige una combinación de fuentes para la interfaz",
       "typographyLoading": "Cargando fuentes…",

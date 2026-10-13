@@ -1009,7 +1009,7 @@
       "title": "Wygląd",
       "description": "Wybierz motyw kolorystyczny interfejsu",
       "darkEmailBodies": "Ciemna treść wiadomości",
-      "darkEmailBodiesDesc": "W ciemnym motywie pokazuj w ciemnych kolorach wiadomości tekstowe i e-maile, które mają własny ciemny wygląd. Pozostałe e-maile wyglądają tak, jak je wysłano, a każdą wiadomość można przełączyć osobno.",
+      "darkEmailBodiesDesc": "W ciemnym motywie pokazuj w ciemnych kolorach także e-maile HTML: z własnym ciemnym wyglądem nadawcy, jeśli go mają, a w przeciwnym razie przebarwione przez MailFlow. E-mail wygląda tak, jak go wysłano, gdy o to prosi lub gdy ciemne wyświetlanie pogorszyłoby czytelność tekstu. Każdą wiadomość można przełączyć osobno.",
       "typography": "Typografia",
       "typographyDescription": "Wybierz zestaw czcionek dla interfejsu",
       "typographyLoading": "Wczytywanie czcionek…",

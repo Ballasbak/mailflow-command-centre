@@ -993,7 +993,7 @@
       "title": "Aspetto",
       "description": "Scegli un tema colore per l'interfaccia",
       "darkEmailBodies": "Corpo delle email scuro",
-      "darkEmailBodiesDesc": "Con un tema scuro, mostra in colori scuri i messaggi in testo semplice e le email che hanno un proprio design scuro. Le altre email restano come inviate, e ogni messaggio può essere cambiato singolarmente.",
+      "darkEmailBodiesDesc": "Con un tema scuro, mostra in colori scuri anche le email HTML: con il design scuro del mittente se c'è, altrimenti ricolorate da MailFlow. Un'email resta come inviata quando lo chiede o quando mostrarla scura renderebbe il testo difficile da leggere. Ogni messaggio può essere cambiato singolarmente.",
       "typography": "Tipografia",
       "typographyDescription": "Scegli una combinazione di font per l'interfaccia",
       "typographyLoading": "Caricamento font…",

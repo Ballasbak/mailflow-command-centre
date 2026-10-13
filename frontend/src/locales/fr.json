@@ -993,7 +993,7 @@
       "title": "Apparence",
       "description": "Choisissez un thème de couleur pour l'interface",
       "darkEmailBodies": "Corps des e-mails sombres",
-      "darkEmailBodiesDesc": "Avec un thème sombre, afficher en couleurs sombres les messages en texte brut et les e-mails qui ont leur propre version sombre. Les autres e-mails restent tels qu'envoyés, et chaque message peut être basculé individuellement.",
+      "darkEmailBodiesDesc": "Avec un thème sombre, afficher aussi les e-mails HTML en couleurs sombres : avec la version sombre de l'expéditeur s'il en a une, sinon recolorés par MailFlow. Un e-mail reste tel qu'envoyé s'il le demande ou si l'afficher en sombre rendrait le texte difficile à lire. Chaque message peut être basculé individuellement.",
       "typography": "Typographie",
       "typographyDescription": "Choisissez une combinaison de polices pour l'interface",
       "typographyLoading": "Chargement des polices…",
