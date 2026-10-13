@@ -551,6 +551,11 @@ const SAME_VALUE_ALLOWED = {
   // "Editar" is the same word in Spanish and Portuguese.
   'admin.users.edit':      [['es', 'ptBR']],
   'admin.users.editTitle': [['es', 'ptBR']],
+
+  // ── Blocked trackers ──────────────────────────────────────────────────────
+  // "rastreador(es) bloqueado(s)" is spelled the same in Spanish and Portuguese.
+  'message.trackersBlocked_one':   [['es', 'ptBR']],
+  'message.trackersBlocked_other': [['es', 'ptBR']],
 };
 
 // Locale-specific plural forms are allowed per locale. A locale may add forms

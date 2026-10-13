@@ -223,6 +223,9 @@
     "loadingError": "메시지 본문을 로드할 수 없습니다.",
     "allowSender": "항상 {{email}}에서 허용",
     "loadImages": "이미지 로드",
+    "trackersBlocked_one": "추적기 {{count}}개 차단됨",
+    "trackersBlocked_other": "추적기 {{count}}개 차단됨",
+    "trackersBlockedHint": "보낸 사람에게 이 이메일을 열었음을 알리는 이미지를 불러오지 않았습니다.",
     "attachmentRisk": {
       "warn": "주의가 필요한 파일 형식 (.{{ext}}) — 매크로나 가짜 로그인 페이지가 포함되어 있을 수 있습니다",
       "block": "위험한 파일 형식 (.{{ext}}) — 컴퓨터에서 코드를 실행할 위험이 있습니다",
