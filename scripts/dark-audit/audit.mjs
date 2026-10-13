@@ -51,16 +51,24 @@ function sameMeasurement(a, b) {
 // The harness page in Chromium, with every request blocked but the harness's own files. `stats`
 // counts every request the emails and the harness made, how many were served from the repo and
 // how many blocked; the self-test asserts nothing else happened.
-export async function openHarness(stats = {}) {
+// `proxyImage(u)`, when given, answers the reader's image proxy URLs (/api/mail/messages/:id/image)
+// with image bytes, standing in for the backend: the self-test uses it.
+const PROXY_PATH = /^\/api\/mail\/messages\/[0-9a-f-]{36}\/image$/;
+export async function openHarness(stats = {}, { proxyImage = null } = {}) {
   const browser = await chromium.launch();
   const context = await browser.newContext({ viewport: { width: WIDTH, height: 1500 } });
   stats.requests = 0;
   stats.served = 0;
   stats.servedPaths = new Set();
   stats.blocked = 0;
+  stats.proxied = 0;
   context.on('request', () => { stats.requests += 1; });
   await context.route('**/*', route => {
     const url = new URL(route.request().url());
+    if (proxyImage && url.protocol === 'http:' && url.host === HOST && PROXY_PATH.test(url.pathname)) {
+      const body = proxyImage(url.searchParams.get('u'));
+      if (body) { stats.proxied += 1; return route.fulfill({ contentType: 'image/png', body }); }
+    }
     if (url.protocol === 'http:' && url.host === HOST && SERVED.test(url.pathname)) {
       stats.served += 1;
       stats.servedPaths.add(url.pathname);
@@ -75,8 +83,8 @@ export async function openHarness(stats = {}) {
   return { browser, page, frame: page.locator('#frame') };
 }
 
-export async function auditEmails(emails, { shotsDir = null, onProgress, stats = {} } = {}) {
-  const { browser, page, frame } = await openHarness(stats);
+export async function auditEmails(emails, { shotsDir = null, onProgress, stats = {}, proxyImage = null } = {}) {
+  const { browser, page, frame } = await openHarness(stats, { proxyImage });
 
   const shoot = async (key, mode) => {
     const png = await frame.screenshot();

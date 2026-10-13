@@ -786,9 +786,11 @@ export function sanitizeSignature(html) {
 const REMOTE_URL = /^\s*(?:https?:)?\/\//i;
 const isCssSpace = (c) => c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
 
-// Every remote URL in CSS text, rewritten by `rewrite(kind, url)`, which returns the text that
-// replaces the whole token: kind 'url' for url(...), 'string' for a quoted URL inside image-set(),
-// 'import' for an @import rule (through its ';'). Anything else is copied as it is.
+// Every remote URL in CSS text, rewritten by `rewrite(kind, url, token)`, which returns the text
+// that replaces the whole token: kind 'url' for url(...), 'string' for a quoted URL inside
+// image-set(), 'import' for an @import rule (through its ';'). `token` is { text, before, value,
+// after }: the token as written, split around the URL's own characters (`value`, untrimmed), so a
+// rewrite can replace the URL alone. Anything else is copied as it is.
 //
 // One pass from left to right that never reads text twice: every search for a closing character
 // remembers where it last looked. Patterns that scan ahead from each candidate (url\(...\)) cost
@@ -820,24 +822,32 @@ function rewriteCssUrls(css, rewrite) {
     found.set(needle, { from, at });
     return at;
   };
-  // A url( token starting at `start` (the 'u'): its value and the index after its ')', or null.
+  // A url( token starting at `start` (the 'u'): its pieces and the index after its ')', or null.
   const urlToken = (start) => {
     let j = start + 4;
     while (j < n && isCssSpace(css[j])) j += 1;
-    let value;
+    let valueStart;
+    let valueEnd;
     let k;
     if (css[j] === '"' || css[j] === "'") {
       const close = next(css[j], j + 1);
       if (close === -1) return null;
-      value = css.slice(j + 1, close);
+      valueStart = j + 1;
+      valueEnd = close;
       k = close + 1;
     } else {
       k = j;
       while (k < n && css[k] !== ')' && css[k] !== '(' && css[k] !== '"' && css[k] !== "'" && !isCssSpace(css[k])) k += 1;
-      value = css.slice(j, k);
+      valueStart = j;
+      valueEnd = k;
     }
     while (k < n && isCssSpace(css[k])) k += 1;
-    return css[k] === ')' ? { value, end: k + 1 } : null;
+    if (css[k] !== ')') return null;
+    const end = k + 1;
+    return {
+      value: css.slice(valueStart, valueEnd), end,
+      token: { text: css.slice(start, end), before: css.slice(start, valueStart), value: css.slice(valueStart, valueEnd), after: css.slice(valueEnd, end) },
+    };
   };
 
   let out = '';
@@ -850,7 +860,7 @@ function rewriteCssUrls(css, rewrite) {
     out += css.slice(i, at);
     if (kind === 'url') {
       const token = urlToken(at);
-      if (token && REMOTE_URL.test(token.value)) { out += rewrite('url', token.value.trim()); i = token.end; continue; }
+      if (token && REMOTE_URL.test(token.value)) { out += rewrite('url', token.value.trim(), token.token); i = token.end; continue; }
       out += css.slice(at, at + 4);
       i = at + 4;
     } else if (kind === 'import') {
@@ -861,7 +871,12 @@ function rewriteCssUrls(css, rewrite) {
       let target = '';
       if (startsWithCi(css, j, 'url(')) target = urlToken(j)?.value ?? '';
       else if (css[j] === '"' || css[j] === "'") { const close = next(css[j], j + 1); target = close === -1 ? '' : css.slice(j + 1, close); }
-      if (REMOTE_URL.test(target)) { out += rewrite('import', target.trim()); i = end; continue; }
+      if (REMOTE_URL.test(target)) {
+        const text = css.slice(at, end);
+        out += rewrite('import', target.trim(), { text, before: text, value: '', after: '' });
+        i = end;
+        continue;
+      }
       out += css.slice(at, at + 7);
       i = at + 7;
     } else {
@@ -876,11 +891,13 @@ function rewriteCssUrls(css, rewrite) {
           const close = next(c, k + 1);
           const stop = close === -1 ? n : close + 1;
           const value = css.slice(k + 1, close === -1 ? n : close);
-          out += REMOTE_URL.test(value) ? rewrite('string', value.trim()) : css.slice(k, stop);
+          out += REMOTE_URL.test(value)
+            ? rewrite('string', value.trim(), { text: css.slice(k, stop), before: c, value, after: close === -1 ? '' : c })
+            : css.slice(k, stop);
           k = stop;
         } else if (startsWithCi(css, k, 'url(')) {
           const token = urlToken(k);
-          if (token && REMOTE_URL.test(token.value)) { out += rewrite('url', token.value.trim()); k = token.end; }
+          if (token && REMOTE_URL.test(token.value)) { out += rewrite('url', token.value.trim(), token.token); k = token.end; }
           else { out += css.slice(k, k + 4); k += 4; depth += 1; }
         } else {
           if (c === '(') depth += 1;
@@ -932,8 +949,9 @@ export function blockRemoteImages(html) {
   // height:auto CSS (like marketing templates) would then collapse all images to 0px tall,
   // making the entire email appear blank.  Reading the explicit width/height attributes
   // lets us generate a grey rectangle that matches the layout slot the author intended.
+  // An attribute value runs to its own quote: a URL may hold the other one (a'b.png in "...").
   let out = html.replace(
-    /(<img\b[^>]*?)\ssrc=(["'])(\s*(?:https?:)?\/\/[^"']*)\2/gi,
+    /(<img\b[^>]*?)\ssrc=(?:"\s*(?:https?:)?\/\/[^"]*"|'\s*(?:https?:)?\/\/[^']*')/gi,
     (match, pre) => {
       const wMatch = pre.match(/\bwidth=["']?(\d+)["']?/i);
       const hMatch = pre.match(/\bheight=["']?(\d+)["']?/i);
@@ -948,17 +966,15 @@ export function blockRemoteImages(html) {
 
   // Remove img srcset entirely when it contains any remote URLs.
   out = out.replace(
-    /(<img\b[^>]*?)\ssrcset=(["'])([^"']*)\2/gi,
-    (_, pre, q, val) =>
-      /(?:^|[\s,])(?:https?:)?\/\//i.test(val)
-        ? pre
-        : `${pre} srcset=${q}${val}${q}`
+    /(<img\b[^>]*?)\ssrcset=(?:"([^"]*)"|'([^']*)')/gi,
+    (match, pre, doubleQuoted, singleQuoted) =>
+      /(?:^|[\s,])(?:https?:)?\/\//i.test(doubleQuoted ?? singleQuoted) ? pre : match
   );
 
   // Blank background="https://..." attribute (table-based marketing email layouts).
   out = out.replace(
-    /(\s)background=(["'])(\s*(?:https?:)?\/\/[^"']*)\2/gi,
-    '$1background=$2$2'
+    /(\s)background=(?:"\s*(?:https?:)?\/\/[^"]*"|'\s*(?:https?:)?\/\/[^']*')/gi,
+    '$1background=""'
   );
 
   // Block CSS url(https://...) in inline style= attributes, read as the browser will read them.
@@ -977,4 +993,74 @@ export function blockRemoteImages(html) {
   out = scanPaired(out, /<style\b/gi, '</style>', (open, content, close) => open + blockCssUrls(content) + close);
 
   return out;
+}
+
+// The URL a remote image reference loads, from its text: protocol-relative ("//host/...") is
+// https, as the email frame resolves it.
+const remoteUrlOf = (text) => {
+  const url = text.trim();
+  return url.startsWith('//') ? `https:${url}` : url;
+};
+
+// Every remote image reference in sanitized HTML, passed to `replace(raw, url)`: `raw` is the
+// reference exactly as written in the HTML (in an attribute, with its entities), `url` what it
+// loads. The result takes the place of `raw` and nothing around it changes, so a replacement that
+// carries `raw` can always be turned back into the original HTML. Covers what blockRemoteImages
+// blocks, but for remote @imports, which are left alone: they are stylesheets, not images, and the
+// email frame's CSP never loads one.
+function rewriteRemoteImageRefs(html, replace) {
+  if (!html) return html;
+  const remote = (raw) => /^\s*(?:https?:)?\/\//i.test(raw);
+  // An attribute value runs to its own quote: a URL may hold the other one.
+  const attrUrl = (_, pre, doubleQuoted, singleQuoted) => {
+    const q = doubleQuoted === undefined ? "'" : '"';
+    const raw = doubleQuoted ?? singleQuoted;
+    return `${pre}${q}${replace(raw, remoteUrlOf(decodeAttr(raw)))}${q}`;
+  };
+  let out = html.replace(/(<img\b[^>]*?\ssrc=)(?:"(\s*(?:https?:)?\/\/[^"]*)"|'(\s*(?:https?:)?\/\/[^']*)')/gi, attrUrl);
+  out = out.replace(
+    /(<img\b[^>]*?\ssrcset=)(?:"([^"]*)"|'([^']*)')/gi,
+    (_, pre, doubleQuoted, singleQuoted) => {
+      const q = doubleQuoted === undefined ? "'" : '"';
+      const value = doubleQuoted ?? singleQuoted;
+      return `${pre}${q}${value.replace(/(^|,)(\s*)([^\s,]+)/g, (m, sep, ws, raw) =>
+        (remote(raw) ? `${sep}${ws}${replace(raw, remoteUrlOf(decodeAttr(raw)))}` : m))}${q}`;
+    },
+  );
+  out = out.replace(/(\sbackground=)(?:"(\s*(?:https?:)?\/\/[^"]*)"|'(\s*(?:https?:)?\/\/[^']*)')/gi, attrUrl);
+  // An inline style is read decoded, as the browser reads it; each URL is replaced as it is
+  // written in the HTML (encodeAttr of its decoded text, which is how sanitized HTML writes it).
+  out = out.replace(
+    /(\sstyle=)(?:"([^"]*)"|'([^']*)')/gi,
+    (match, attr, doubleQuoted, singleQuoted) => {
+      const css = decodeAttr(doubleQuoted ?? singleQuoted);
+      const rewritten = rewriteCssUrls(css, (kind, url, token) => (kind === 'import'
+        ? token.text
+        : `${token.before}${replace(encodeAttr(token.value), remoteUrlOf(url))}${token.after}`));
+      return rewritten === css ? match : `${attr}"${encodeAttr(rewritten)}"`;
+    },
+  );
+  out = scanPaired(out, /<style\b/gi, '</style>', (open, content, close) => open + rewriteCssUrls(content, (kind, url, token) => (kind === 'import'
+    ? token.text
+    : `${token.before}${replace(token.value, remoteUrlOf(url))}${token.after}`)) + close);
+  return out;
+}
+
+// Remote images loaded through MailFlow's image proxy: every remote image reference in sanitized
+// HTML becomes `toProxy(raw)` (routes/mail.js imageProxyPath), which carries the reference as it
+// was written, so the original can be restored exactly (the frontend's utils/imageProxy.js does,
+// for replies and forwards).
+export function proxyRemoteImages(html, toProxy) {
+  return rewriteRemoteImageRefs(html, (raw) => toProxy(raw));
+}
+
+// The remote image references in sanitized HTML, as written, with what each loads: the only URLs
+// the image proxy will fetch for this message.
+export function remoteImageRefs(html) {
+  const refs = new Map();
+  rewriteRemoteImageRefs(html, (raw, url) => {
+    if (!refs.has(raw)) refs.set(raw, url);
+    return raw;
+  });
+  return refs;
 }

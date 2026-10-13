@@ -12,6 +12,8 @@ import {
   rewriteAnchorHrefs,
   withoutDarkScheme,
   splitDarkScheme,
+  proxyRemoteImages,
+  remoteImageRefs,
 } from './emailSanitizer.js';
 
 // ── stripEmailHead ─────────────────────────────────────────────────────────
@@ -619,6 +621,14 @@ describe('blockRemoteImages', () => {
     expect(out).toBe('<div style="background-image:url(data:,);background-color:#ffffff;color:#222222;padding:40px">A</div>');
   });
 
+  // An apostrophe in a double-quoted URL used to end the match early: neither blocked nor detected.
+  it('blocks a URL holding the other quote character', () => {
+    expect(blockRemoteImages(`<img src="https://tracker.example/a'b.png">`)).not.toContain('tracker.example');
+    expect(blockRemoteImages(`<table background="https://tracker.example/a'b.png">`)).not.toContain('tracker.example');
+    expect(blockRemoteImages(`<img src="data:," srcset="https://tracker.example/a'b.png 2x">`)).not.toContain('tracker.example');
+    expect(hasRemoteImages(`<img src="https://tracker.example/a'b.png">`)).toBe(true);
+  });
+
   it('keeps a single-quoted style attribute well formed', () => {
     const out = blockRemoteImages(`<div style='background:url("https://example.com/h.png");color:red'>x</div>`);
     expect(out).toBe('<div style="background:url(data:,);color:red">x</div>');
@@ -896,4 +906,70 @@ describe('text whose lowercase is longer', () => {
 it('keeps &lt; and &gt; in an inline style it rewrites', () => {
   const html = '<div style="background:url(https://example.com/a.png);font-family:&quot;A&lt;B&gt;&quot;">x</div>';
   expect(blockRemoteImages(html)).toBe('<div style="background:url(data:,);font-family:&quot;A&lt;B&gt;&quot;">x</div>');
+});
+
+// The image proxy's rewrite (services/imageProxy.js). A proxy URL carries the reference exactly as
+// written, so the original HTML comes back byte for byte (the frontend does this for replies).
+describe('proxyRemoteImages', () => {
+  const toProxy = (raw) => `/api/mail/messages/m1/image?u=${encodeURIComponent(raw).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)}`;
+  const restore = (html) => html.replace(/\/api\/mail\/messages\/m1\/image\?u=([A-Za-z0-9%._~-]*)/g, (_, u) => decodeURIComponent(u));
+  const CASES = {
+    img: '<img src="https://img.example/a.png?x=1&amp;y=2" width="10">',
+    protocolRelative: '<img src=" //img.example/p.gif">',
+    srcset: '<img src="data:image/png;base64,AAAA" srcset="https://img.example/a.png 1x, //img.example/b.png 2x">',
+    background: '<table background="https://img.example/bg.png"><tr><td>x</td></tr></table>',
+    inlineQuoted: '<div style="background-image:url(&quot;https://img.example/h.png?a=1&amp;b=2&quot;);color:#222">x</div>',
+    inlineSingle: '<div style="background:url(\'https://img.example/s.png\') no-repeat">x</div>',
+    imageSet: '<div style="background-image:image-set(&quot;https://img.example/1.png&quot; 1x, url(https://img.example/2.png) 2x)">x</div>',
+    styleBlock: '<style>.h{background:url( "https://img.example/st.png" )}.k{background:url(//img.example/k.png)}</style><div class="h">x</div>',
+    untouched: '<img src="data:image/png;base64,AAAA"><img src="cid:part1"><div style="background:url(/local.png);font-family:&quot;A&lt;B&gt;&quot;">x</div>',
+  };
+
+  it.each(Object.entries(CASES))('%s: proxied, then restored exactly', (name, html) => {
+    const proxied = proxyRemoteImages(html, toProxy);
+    expect(proxied).not.toMatch(/(?:https?:)?\/\/img\.example/);
+    expect(restore(proxied)).toBe(html);
+    if (name === 'untouched') expect(proxied).toBe(html);
+  });
+
+  it('leaves nothing for blocking to block', () => {
+    for (const html of Object.values(CASES)) {
+      const proxied = proxyRemoteImages(html, toProxy);
+      expect(blockRemoteImages(proxied)).toBe(proxied);
+    }
+  });
+
+  it('writes proxy URLs that are safe in any attribute or CSS', () => {
+    const proxied = proxyRemoteImages(`<img src="https://img.example/a'b(c)*!.png?q=&quot;x&quot;">`, toProxy);
+    const url = /src="([^"]*)"/.exec(proxied)[1];
+    expect(url).toMatch(/^\/api\/mail\/messages\/m1\/image\?u=[A-Za-z0-9%._~-]+$/);
+  });
+
+  it('leaves remote @imports alone: stylesheets, not images, and never loaded by the frame', () => {
+    const html = '<style>@import url(https://fonts.example/a.css); p{}</style>';
+    expect(proxyRemoteImages(html, toProxy)).toBe(html);
+  });
+
+  it('stays fast on hostile CSS', () => {
+    const started = performance.now();
+    proxyRemoteImages(`<style>${'a{background:url(//x'.repeat(40000)}</style>`, toProxy);
+    proxyRemoteImages(`<style>${'a{b:image-set("//x" '.repeat(40000)}</style>`, toProxy);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+});
+
+describe('remoteImageRefs', () => {
+  it('maps each reference as written to the URL it loads', () => {
+    const refs = remoteImageRefs('<img src="https://img.example/a.png?x=1&amp;y=2"><img src="//img.example/b.png"><div style="background:url(&quot;https://img.example/c.png&quot;)">x</div><style>.s{background:url(https://img.example/d.png)}</style>');
+    expect(Object.fromEntries(refs)).toEqual({
+      'https://img.example/a.png?x=1&amp;y=2': 'https://img.example/a.png?x=1&y=2',
+      '//img.example/b.png': 'https://img.example/b.png',
+      'https://img.example/c.png': 'https://img.example/c.png',
+      'https://img.example/d.png': 'https://img.example/d.png',
+    });
+  });
+
+  it('has nothing for cid:, data: or relative images', () => {
+    expect(remoteImageRefs('<img src="cid:a"><img src="data:image/png;base64,AAAA"><img src="/x.png">').size).toBe(0);
+  });
 });

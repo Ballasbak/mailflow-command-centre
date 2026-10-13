@@ -38,6 +38,17 @@ describe('buildPrintDocument', () => {
     assert.doesNotMatch(allowed, /img-src/);
   });
 
+  it('loads proxied images from MailFlow alone', () => {
+    const proxied = buildPrintDocument([{ message: A, body: { html: '<p>x</p>', remoteImagesProxied: true } }]);
+    assert.match(proxied, /base-uri 'none'; img-src 'self' data: blob:; font-src data:; media-src data: blob:;"/);
+    const mixed = buildPrintDocument([
+      { message: A, body: { html: '<p>x</p>', remoteImagesProxied: true } },
+      { message: B, body: { html: '<p>y</p>', remoteImagesBlocked: true } },
+    ]);
+    assert.match(mixed, /img-src data: blob:;/, 'a blocked message wins');
+    assert.doesNotMatch(mixed, /img-src 'self'/);
+  });
+
   it('strips script and event handlers from an HTML body', () => {
     const html = buildPrintDocument([{ message: A, body: { html: '<p onclick="x()">Hello</p><script>alert(1)</script><img src=x onerror="y()">' } }]);
     assert.match(html, /<p>Hello<\/p>/);

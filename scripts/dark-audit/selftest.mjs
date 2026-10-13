@@ -6,10 +6,35 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { deflateSync, crc32 } from 'node:zlib';
 import { prepareCorpus } from './prepare.mjs';
 import { auditEmails, totals } from './audit.mjs';
 
 const CARD = 'padding:40px;height:400px';
+
+// A PNG of `width` x `height`, each pixel from `pixel(x, y)` as [r, g, b, a].
+function png(width, height, pixel) {
+  const raw = Buffer.alloc((width * 4 + 1) * height);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) raw.set(pixel(x, y), y * (width * 4 + 1) + 1 + x * 4);
+  }
+  const chunk = (type, data) => {
+    const head = Buffer.alloc(8);
+    head.writeUInt32BE(data.length, 0);
+    head.write(type, 4, 'latin1');
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(Buffer.concat([head.subarray(4), data])) >>> 0, 0);
+    return Buffer.concat([head, data, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr.set([8, 6, 0, 0, 0], 8);
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
+// A remote logo as the image proxy serves it: black lettering on a transparent background.
+const DARK_LOGO = png(160, 50, (x, y) => (x >= 10 && x < 150 && y >= 10 && y < 40 ? [17, 17, 17, 255] : [0, 0, 0, 0]));
+const PROXY_URL = '/api/mail/messages/4d479e4f-9b21-4013-9c07-3fbc35f275b1/image?u=https%3A%2F%2Flogo.example%2Flogo.png';
 const svg = (body, w = 160, h = 50) =>
   `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">${body}</svg>`)}`;
 export const FIXTURES = {
@@ -71,6 +96,9 @@ export const FIXTURES = {
   // same gray as its color: recoloring the color alone left the text drawn in the old gray (seen in
   // real mail).
   inheritedFill: `<table width="100%" bgcolor="#ffffff"><tr><td style="color:#3e3e3e;-webkit-text-fill-color:#3e3e3e;padding:20px"><div style="color:#3e3e3e">Text drawn with a fill color its cell set.</div></td></tr></table>`,
+  // A remote logo loaded through MailFlow's image proxy: the page can read its pixels, so a dark
+  // one on a transparent background gets its backing like an inline image.
+  proxiedLogo: `<p>Logo:</p><img width="160" height="50" src="${PROXY_URL}">`,
   // A sender that asks to stay light.
   lightOnly: '<html><head><meta name="color-scheme" content="only light"></head><body><p style="color:#333">Keep me light please.</p><img src="https://example.invalid/pixel.gif" width="1" height="1"></body></html>',
 };
@@ -88,14 +116,14 @@ export async function runSelftest() {
     assert.equal(byKey.lightOnly.lightOnly, true);
 
     const stats = {};
-    const list = await auditEmails(prepared, { stats });
+    const list = await auditEmails(prepared, { stats, proxyImage: (u) => (u === 'https://logo.example/logo.png' ? DARK_LOGO : null) });
     const results = Object.fromEntries(list.map(r => [r.key, r]));
     for (const r of list) {
       assert.equal(r.error, undefined, `${r.key}: ${r.error}`);
       assert.equal(r.restoreMismatch, false, `${r.key}: putting it back as sent is exact`);
     }
     assert.ok(stats.blocked > 0, 'the fixtures do make requests');
-    assert.equal(stats.served + stats.blocked, stats.requests, 'every request is either the harness or blocked');
+    assert.equal(stats.served + stats.proxied + stats.blocked, stats.requests, 'every request is the harness, the stand-in image proxy, or blocked');
     assert.deepEqual([...stats.servedPaths].sort(), [
       '/frontend/src/utils/darkBody.js', '/frontend/src/utils/darkImages.js', '/frontend/src/utils/darkRecolor.js',
       '/frontend/src/utils/emailContrast.js', '/frontend/src/utils/emailFrameDoc.js', '/frontend/src/utils/emailFrameHeight.js',
@@ -149,6 +177,9 @@ export async function runSelftest() {
 
     assert.equal(auto('forcedTransitions').outcome, 'recolor', 'not refused because of a transition MailFlow could not switch off');
     assert.equal(m('forcedTransitions', 'recolor').verdict, 'clean');
+
+    assert.equal(stats.proxied >= 1, true, 'the proxied logo was asked for through the proxy');
+    assert.deepEqual(auto('proxiedLogo').images, { placeholders: 0, backed: 1, waiting: 0 }, 'a proxied dark logo is backed');
 
     assert.equal(auto('images').outcome, 'recolor');
     assert.deepEqual(auto('images').images, { placeholders: 0, backed: 1, waiting: 0 }, 'only the dark logo is backed');

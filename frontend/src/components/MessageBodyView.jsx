@@ -351,7 +351,7 @@ function MessageBodyView({ body, messageId, emailScaleRef, hasNativeContextTarge
 
   // The frame's document (utils/emailFrameDoc.js): the email as sent, carrying the theme's dark
   // colors and the sender's own dark design switched off until showDarkOrNot uses them.
-  const srcDoc = buildFrameDoc({ html: body.html, palette, darkCss: body.darkCss, remoteImagesBlocked: body.remoteImagesBlocked });
+  const srcDoc = buildFrameDoc({ html: body.html, palette, darkCss: body.darkCss, remoteImagesBlocked: body.remoteImagesBlocked, remoteImagesProxied: body.remoteImagesProxied });
 
   return (
     <iframe

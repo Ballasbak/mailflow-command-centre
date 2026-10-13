@@ -79,6 +79,12 @@ describe('the email frame and blocked remote images', () => {
     assert.match(policy, /^script-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; style-src 'unsafe-inline';/, 'the rest unchanged');
   });
 
+  test('loads images from MailFlow alone when they come through the image proxy', async () => {
+    const policy = csp(await frameDoc({ html: '<p>x</p>', remoteImagesProxied: true }));
+    assert.match(policy, /img-src 'self' data: blob:;/);
+    assert.match(policy, /font-src data:;/);
+  });
+
   test('leaves images to the email when they are allowed', async () => {
     for (const body of [{ html: '<p>x</p>', remoteImagesBlocked: false }, { html: '<p>x</p>' }]) {
       assert.doesNotMatch(csp(await frameDoc(body)), /img-src|font-src|media-src/);

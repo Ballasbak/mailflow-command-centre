@@ -28,13 +28,14 @@ export function usableDarkCss(darkCss) {
 }
 
 // `remoteImagesBlocked`: the body was served with remote images blocked, so the frame forbids
-// remote loads outright (utils/remoteImagePolicy.js).
-export function buildFrameDoc({ html, palette = DARK_DEFAULTS, darkCss = '', remoteImagesBlocked = false }) {
+// remote loads outright; `remoteImagesProxied`: its images come through MailFlow's image proxy, so
+// the frame loads images from MailFlow alone (utils/remoteImagePolicy.js).
+export function buildFrameDoc({ html, palette = DARK_DEFAULTS, darkCss = '', remoteImagesBlocked = false, remoteImagesProxied = false }) {
   const css = usableDarkCss(darkCss);
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       <meta name="color-scheme" content="only light">
-      <meta http-equiv="Content-Security-Policy" content="script-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; style-src 'unsafe-inline';${remoteLoadsCsp(remoteImagesBlocked)}">
+      <meta http-equiv="Content-Security-Policy" content="script-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; style-src 'unsafe-inline';${remoteLoadsCsp(remoteImagesBlocked, remoteImagesProxied)}">
       <base target="_blank">
     </head><body><div id="${SCALE_WRAPPER}">${
       html.replace(/<a(\s)/gi, '<a rel="noopener noreferrer"$1')
