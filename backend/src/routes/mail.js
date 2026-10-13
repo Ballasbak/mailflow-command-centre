@@ -10,6 +10,7 @@ import { extractImapError } from '../services/imapError.js';
 import { isConnectionRefusal } from '../services/imapManager.js';
 import { sanitizeEmail, stripEmailHead, hasRemoteImages, blockRemoteImages, rewriteEbayImageserUrls, rewriteAnchorHrefs, splitDarkScheme, proxyRemoteImages, remoteImageRefs } from '../services/emailSanitizer.js';
 import { imageProxyPath, fetchProxiedImage, createUserLimiter } from '../services/imageProxy.js';
+import { needsCidRefetch, settleCids, withoutCidMarker } from '../utils/cidRefs.js';
 import { snippetFromBody, decodeMimeWords, parseRawHeaders, parseMailboxList, buildHeadersFromMessage } from '../services/messageParser.js';
 import { draftMessageSql, resolveTrashFolder, resolveAllTrashPaths, resolveAllDraftsPaths, resolveArchiveFolder, isAllMailFolder, resolveSpamFolder, resolveAllSpamPaths, getDeleteStrategy, adjustFolderCounts, fanOutReadToSiblings, fanOutStarToSiblings, fanOutBulkReadToSiblings } from '../utils/mailUtils.js';
 import { pluginRegistry } from '../plugins/registry.js';
@@ -415,7 +416,9 @@ router.get('/messages/:id/body', async (req, res) => {
   // Return cached body if available — but re-fetch when the cached HTML still
   // contains unresolved cid: references, or http:// image URLs that were cached
   // before the http→https upgrade was added (would be blocked as mixed content).
-  const hasCidRefs  = message.body_html && /\bcid:/i.test(message.body_html);
+  // A body fetched completely is marked settled and not fetched again for references
+  // that can never resolve (utils/cidRefs.js, #595).
+  const hasCidRefs  = needsCidRefetch(message.body_html);
   const hasHttpImgs = message.body_html && (
     // <img src="http://"> cached before the http→https upgrade
     /<img[^>]+src=["']http:\/\//i.test(message.body_html) ||
@@ -468,19 +471,21 @@ router.get('/messages/:id/body', async (req, res) => {
     // Apply remote-image blocking at response time — never write the blocked variant
     // back to the DB so the canonical cached HTML always has images intact.
     const skipBlocking = req.query.remoteImages === '1';
-    let responseHtml = html;
+    // The settled marker stays in the cache (html, written back above); it never leaves MailFlow.
+    const shown = withoutCidMarker(html);
+    let responseHtml = shown;
     let hasBlockedRemoteImages = false;
     // Whether remote images are blocked for this message at all, whatever was found: the email
     // frame then forbids remote loads outright, behind blockRemoteImages.
     const remoteImagesBlocked = !skipBlocking && shouldBlockImages(message.preferences, message);
-    if (remoteImagesBlocked && html && hasRemoteImages(html)) {
-      responseHtml = blockRemoteImages(html);
+    if (remoteImagesBlocked && shown && hasRemoteImages(shown)) {
+      responseHtml = blockRemoteImages(shown);
       hasBlockedRemoteImages = true;
     }
     // Remote images allowed for this message load through the image proxy (services/imageProxy.js),
     // and the email frame then allows images from MailFlow alone.
     const remoteImagesProxied = !remoteImagesBlocked;
-    if (remoteImagesProxied && html) responseHtml = proxyRemoteImages(html, (raw) => imageProxyPath(id, raw));
+    if (remoteImagesProxied && shown) responseHtml = proxyRemoteImages(shown, (raw) => imageProxyPath(id, raw));
     return res.json({ ...splitDarkScheme(responseHtml), text: message.body_text, attachments, hasBlockedRemoteImages, remoteImagesBlocked, remoteImagesProxied, senderEmail: message.sender_email, senderName: message.sender_name, forwardedFromEmail: message.forwarded_from_email, forwardedFromName: message.forwarded_from_name, forwardedVia: message.forwarded_via, bccAddresses: bccOf(message) });
   }
 
@@ -490,14 +495,16 @@ router.get('/messages/:id/body', async (req, res) => {
     const account = accountResult.rows[0];
     imapManager.noteUserActivity(account.id);
 
-    const { html, text, attachments } = await fetchWithTimeout(
+    const { html, text, attachments, cidsComplete } = await fetchWithTimeout(
       imapManager.fetchMessageBody(account, message.uid, message.folder),
       BODY_FETCH_TIMEOUT_MS
     );
 
-    const safeHtml = html ? sanitizeDbText(sanitizeEmail(html)) : null;
+    const sanitized = html ? sanitizeDbText(sanitizeEmail(html)) : null;
+    // Stored settled when its cid: references can never resolve (utils/cidRefs.js, #595).
+    const safeHtml = sanitized && settleCids(sanitized, cidsComplete);
     const safeText = sanitizeDbText(text);
-    const snip = sanitizeDbText(snippetFromBody(safeText, safeHtml || html));
+    const snip = sanitizeDbText(snippetFromBody(safeText, sanitized || html));
 
     // Only cache when we actually got body content — don't overwrite a prior
     // successful cache with null if a transient IMAP fetch returns nothing.
@@ -512,17 +519,18 @@ router.get('/messages/:id/body', async (req, res) => {
     }
 
     // Apply remote-image blocking at response time — safeHtml (unblocked) is what
-    // was written to the DB cache above, preserving the canonical body.
+    // was written to the DB cache above, preserving the canonical body; the response is it
+    // without the settled marker.
     const skipBlocking = req.query.remoteImages === '1';
-    let responseHtml = safeHtml;
+    let responseHtml = sanitized;
     let hasBlockedRemoteImages = false;
     const remoteImagesBlocked = !skipBlocking && shouldBlockImages(message.preferences, message);
-    if (remoteImagesBlocked && safeHtml && hasRemoteImages(safeHtml)) {
-      responseHtml = blockRemoteImages(safeHtml);
+    if (remoteImagesBlocked && sanitized && hasRemoteImages(sanitized)) {
+      responseHtml = blockRemoteImages(sanitized);
       hasBlockedRemoteImages = true;
     }
     const remoteImagesProxied = !remoteImagesBlocked;
-    if (remoteImagesProxied && safeHtml) responseHtml = proxyRemoteImages(safeHtml, (raw) => imageProxyPath(id, raw));
+    if (remoteImagesProxied && sanitized) responseHtml = proxyRemoteImages(sanitized, (raw) => imageProxyPath(id, raw));
     res.json({ ...splitDarkScheme(responseHtml), text: safeText, attachments: attachments || [], hasBlockedRemoteImages, remoteImagesBlocked, remoteImagesProxied, senderEmail: message.sender_email, senderName: message.sender_name, forwardedFromEmail: message.forwarded_from_email, forwardedFromName: message.forwarded_from_name, forwardedVia: message.forwarded_via, bccAddresses: bccOf(message) });
   } catch (err) {
     const msg = err.message || 'Unknown error';
