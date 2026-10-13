@@ -67,6 +67,10 @@ export const FIXTURES = {
     html: '<img width="300" height="80" src="https://example.invalid/banner.png">'
       + `<div style="background-image:url(https://example.invalid/hero.png);background-color:#ffffff;color:#222222;${CARD}">Headline over a blocked hero image</div>`,
   },
+  // Text whose fill color (-webkit-text-fill-color, which wins over color) an ancestor set to the
+  // same gray as its color: recoloring the color alone left the text drawn in the old gray (seen in
+  // real mail).
+  inheritedFill: `<table width="100%" bgcolor="#ffffff"><tr><td style="color:#3e3e3e;-webkit-text-fill-color:#3e3e3e;padding:20px"><div style="color:#3e3e3e">Text drawn with a fill color its cell set.</div></td></tr></table>`,
   // A sender that asks to stay light.
   lightOnly: '<html><head><meta name="color-scheme" content="only light"></head><body><p style="color:#333">Keep me light please.</p><img src="https://example.invalid/pixel.gif" width="1" height="1"></body></html>',
 };
@@ -155,6 +159,9 @@ export async function runSelftest() {
     assert.equal(auto('blockedImages').summary.overImage, 0, 'a blocked background image is no image');
     assert.ok(auto('blockedImages').bright < 0.05, `blocked hero area and placeholder are dark: ${auto('blockedImages').bright}`);
     assert.ok(m('blockedImages', 'light').bright > 0.5);
+
+    assert.equal(m('inheritedFill', 'recolor').verdict, 'clean', 'the fill follows the recolored text');
+    assert.equal(auto('inheritedFill').outcome, 'recolor');
 
     assert.deepEqual(Object.keys(results.lightOnly.modes), ['light'], 'a sender that asks to stay light is never shown dark');
 

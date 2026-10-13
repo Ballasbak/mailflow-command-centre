@@ -149,13 +149,17 @@ export function planRecolor(doc, palette) {
 
     // A list item's bullet is drawn in its color even when its text sits in a child element.
     if (hasOwnText(el) || s.display === 'list-item') {
-      const fill = parseColor(s.webkitTextFillColor);
       const color = parseColor(s.color);
-      for (const [prop, value] of [['color', color], ['-webkit-text-fill-color', fill]]) {
-        if (!value || (prop !== 'color' && color && value.a === color.a && same(value, color))) continue;
-        if (value.a === 0) continue;
-        const fg = composite(value, lightBg);
-        plan.push([el, prop, formatRgb(darkText(fg, lightBg, newBg, anchors))]);
+      const fill = parseColor(s.webkitTextFillColor);
+      if (color && color.a > 0) plan.push([el, 'color', formatRgb(darkText(composite(color, lightBg), lightBg, newBg, anchors))]);
+      // Text is drawn in -webkit-text-fill-color, which follows color only while nobody set it. A
+      // fill matching the color as sent may still be one an ancestor set explicitly, inherited, and
+      // then it would keep the old color: make it follow the new one. A fill of its own color is
+      // recolored on its own.
+      if (fill && color && fill.a === color.a && same(fill, color)) {
+        plan.push([el, '-webkit-text-fill-color', 'currentcolor']);
+      } else if (fill && fill.a > 0) {
+        plan.push([el, '-webkit-text-fill-color', formatRgb(darkText(composite(fill, lightBg), lightBg, newBg, anchors))]);
       }
     }
 
