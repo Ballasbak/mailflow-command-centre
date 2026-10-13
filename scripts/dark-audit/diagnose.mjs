@@ -55,14 +55,14 @@ for (const [key, why] of flagged) {
   const out = { key, why, hasDarkCss: Boolean(email.darkCss) };
 
   // Control: nothing switched, measured twice a second apart.
-  await h(([html, css]) => window.harness.load(html, css), [email.html, email.darkCss]);
+  await h(([html, css, blocked]) => window.harness.load(html, css, blocked), [email.html, email.darkCss, Boolean(email.imagesBlocked)]);
   const first = strip(await h(() => window.harness.light()));
   await h(ms => window.harness.settle(ms), 1000);
   const second = strip(await h(() => window.harness.light()));
   out.control = { textPieces: first.length, changedWithoutSwitching: differences(first, second).slice(0, 10) };
 
   // Replay of the audit: every way of showing it, then back as sent.
-  await h(([html, css]) => window.harness.load(html, css), [email.html, email.darkCss]);
+  await h(([html, css, blocked]) => window.harness.load(html, css, blocked), [email.html, email.darkCss, Boolean(email.imagesBlocked)]);
   const light = strip(await h(() => window.harness.light()));
   for (const mode of DARK_MODES) if (applies(email, mode)) await h(m => window.harness.show(m), mode);
   await h(() => window.harness.restore());
@@ -73,7 +73,7 @@ for (const [key, why] of flagged) {
 
   // The recoloring alone: the text it leaves unreadable, with what is behind it as sent and recolored.
   if (applies(email, 'recolor')) {
-    await h(([html, css]) => window.harness.load(html, css), [email.html, email.darkCss]);
+    await h(([html, css, blocked]) => window.harness.load(html, css, blocked), [email.html, email.darkCss, Boolean(email.imagesBlocked)]);
     const sent = strip(await h(() => window.harness.light()));
     const shown = await h(() => window.harness.show('recolor'));
     const dark = strip(shown.dark);

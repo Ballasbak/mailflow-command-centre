@@ -10,6 +10,8 @@ import { prepareCorpus } from './prepare.mjs';
 import { auditEmails, totals } from './audit.mjs';
 
 const CARD = 'padding:40px;height:400px';
+const svg = (body, w = 160, h = 50) =>
+  `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">${body}</svg>`)}`;
 export const FIXTURES = {
   // Sets no colors: the theme's text on the theme's background reads fine.
   plain: '<p>Hello there, this is a plain email with no colors of its own.</p>',
@@ -51,6 +53,20 @@ export const FIXTURES = {
   forcedTransitions: '<style>td p a.lnk { transition: all 0.5s !important; }</style>'
     + '<table width="100%"><tr><td bgcolor="#ffffff"><p style="color:#232323"><a class="lnk" href="https://example.invalid/" style="color:#3700ff">A link that insists on fading</a></p>'
     + '<p><a href="https://example.invalid/" style="color:#3700ff;transition:color 0.5s !important">Another one, inline</a></p></td></tr></table>',
+  // Inline images (cid: images arrive as data: URIs, which MailFlow can read): a dark logo on a
+  // transparent background would vanish and gets a light backing; a white logo and an opaque
+  // image do not.
+  images: `<p>Logos:</p><img id="dark-logo" width="160" height="50" src="${svg('<rect x="10" y="10" width="140" height="30" fill="#111111"/>')}">`
+    + `<img id="light-logo" width="160" height="50" src="${svg('<rect x="10" y="10" width="140" height="30" fill="#ffffff"/>')}">`
+    + `<img id="photo" width="160" height="50" src="${svg('<rect width="160" height="50" fill="#202020"/>')}">`,
+  // Remote images as MailFlow serves them blocked (its default): the image becomes a light gray
+  // placeholder, drawn dark with the body; a blocked background image no longer counts as an
+  // image, so the area behind it is recolored instead of left light.
+  blockedImages: {
+    blockImages: true,
+    html: '<img width="300" height="80" src="https://example.invalid/banner.png">'
+      + `<div style="background-image:url(https://example.invalid/hero.png);background-color:#ffffff;color:#222222;${CARD}">Headline over a blocked hero image</div>`,
+  },
   // A sender that asks to stay light.
   lightOnly: '<html><head><meta name="color-scheme" content="only light"></head><body><p style="color:#333">Keep me light please.</p><img src="https://example.invalid/pixel.gif" width="1" height="1"></body></html>',
 };
@@ -59,7 +75,7 @@ export async function runSelftest() {
   const dir = mkdtempSync(join(tmpdir(), 'dark-audit-selftest-'));
   try {
     writeFileSync(join(dir, 'synthetic.jsonl'), Object.entries(FIXTURES)
-      .map(([key, html]) => JSON.stringify({ key, instance: 'selftest', domain: `${key}.example`, subject: key, html }))
+      .map(([key, f]) => JSON.stringify({ key, instance: 'selftest', domain: `${key}.example`, subject: key, ...(typeof f === 'string' ? { html: f } : f) }))
       .join('\n') + '\n');
     const prepared = prepareCorpus(dir);
     const byKey = Object.fromEntries(prepared.map(e => [e.key, e]));
@@ -76,7 +92,11 @@ export async function runSelftest() {
     }
     assert.ok(stats.blocked > 0, 'the fixtures do make requests');
     assert.equal(stats.served + stats.blocked, stats.requests, 'every request is either the harness or blocked');
-    assert.ok(stats.served <= 8, `only the harness page and its modules are served (${stats.served})`);
+    assert.deepEqual([...stats.servedPaths].sort(), [
+      '/frontend/src/utils/darkBody.js', '/frontend/src/utils/darkImages.js', '/frontend/src/utils/darkRecolor.js',
+      '/frontend/src/utils/emailContrast.js', '/frontend/src/utils/emailFrameDoc.js', '/frontend/src/utils/emailFrameHeight.js',
+      '/frontend/src/utils/oklch.js', '/frontend/src/utils/remoteImagePolicy.js', '/scripts/dark-audit/harness.html',
+    ], 'only the harness page and the reader modules it imports are served');
 
     const m = (key, mode) => results[key].modes[mode];
     const auto = (key) => m(key, 'auto');
@@ -125,6 +145,16 @@ export async function runSelftest() {
 
     assert.equal(auto('forcedTransitions').outcome, 'recolor', 'not refused because of a transition MailFlow could not switch off');
     assert.equal(m('forcedTransitions', 'recolor').verdict, 'clean');
+
+    assert.equal(auto('images').outcome, 'recolor');
+    assert.deepEqual(auto('images').images, { placeholders: 0, backed: 1, waiting: 0 }, 'only the dark logo is backed');
+    assert.equal(byKey.blockedImages.imagesBlocked, true);
+    assert.match(byKey.blockedImages.html, /data:image\/svg\+xml,/, 'the remote image became a placeholder');
+    assert.equal(auto('blockedImages').outcome, 'recolor');
+    assert.equal(auto('blockedImages').images.placeholders, 1, 'the placeholder is drawn dark');
+    assert.equal(auto('blockedImages').summary.overImage, 0, 'a blocked background image is no image');
+    assert.ok(auto('blockedImages').bright < 0.05, `blocked hero area and placeholder are dark: ${auto('blockedImages').bright}`);
+    assert.ok(m('blockedImages', 'light').bright > 0.5);
 
     assert.deepEqual(Object.keys(results.lightOnly.modes), ['light'], 'a sender that asks to stay light is never shown dark');
 

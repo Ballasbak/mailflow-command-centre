@@ -56,12 +56,14 @@ export async function openHarness(stats = {}) {
   const context = await browser.newContext({ viewport: { width: WIDTH, height: 1500 } });
   stats.requests = 0;
   stats.served = 0;
+  stats.servedPaths = new Set();
   stats.blocked = 0;
   context.on('request', () => { stats.requests += 1; });
   await context.route('**/*', route => {
     const url = new URL(route.request().url());
     if (url.protocol === 'http:' && url.host === HOST && SERVED.test(url.pathname)) {
       stats.served += 1;
+      stats.servedPaths.add(url.pathname);
       return route.fulfill({ path: join(REPO, url.pathname), contentType: TYPES[extname(url.pathname)] });
     }
     stats.blocked += 1;
@@ -87,10 +89,10 @@ export async function auditEmails(emails, { shotsDir = null, onProgress, stats =
     const result = {
       key: email.key, instance: email.instance, domain: email.domain, fromName: email.fromName,
       subject: email.subject, date: email.date, hasDarkCss: Boolean(email.darkCss), lightOnly: email.lightOnly,
-      modes: {},
+      imagesBlocked: Boolean(email.imagesBlocked), modes: {},
     };
     try {
-      const height = await page.evaluate(([html, css]) => window.harness.load(html, css), [email.html, email.darkCss]);
+      const height = await page.evaluate(([html, css, blocked]) => window.harness.load(html, css, blocked), [email.html, email.darkCss, Boolean(email.imagesBlocked)]);
       const light = await page.evaluate(() => window.harness.light());
       result.modes.light = { summary: summarize(light), bright: await shoot(email.key, 'light'), height };
       for (const mode of DARK_MODES) {
@@ -106,6 +108,7 @@ export async function auditEmails(emails, { shotsDir = null, onProgress, stats =
           entry.outcome = shown.outcome;
           entry.ms = Math.round(shown.ms * 10) / 10;
           entry.attempts = shown.attempts.map(a => ({ kind: a.kind, verdict: a.verdict, regressed: a.regressed }));
+          entry.images = shown.images;
         }
         result.modes[mode] = entry;
       }
@@ -143,9 +146,15 @@ export function totals(results) {
       t.medianBrightShownDark = percentile(darkRows.map(r => r.modes.auto.bright), 0.5);
       const ms = rows.map(r => r.modes.auto.ms);
       t.ms = { median: percentile(ms, 0.5), p95: percentile(ms, 0.95), max: percentile(ms, 1) };
+      t.images = {
+        placeholders: rows.reduce((n, r) => n + (r.modes.auto.images?.placeholders || 0), 0),
+        backed: rows.reduce((n, r) => n + (r.modes.auto.images?.backed || 0), 0),
+        emailsWithBacked: rows.filter(r => r.modes.auto.images?.backed).length,
+      };
     }
     out[mode] = t;
   }
+  out.imagesBlocked = results.filter(r => r.imagesBlocked).length;
   out.restoreMismatches = results.filter(r => r.restoreMismatch).length;
   out.errors = results.filter(r => r.error).length;
   return out;
@@ -173,6 +182,7 @@ export function printTotals(t, log = console.log) {
   const o = a.outcomes;
   log(`auto outcomes: sender design ${o.sender || 0} (${pct(o.sender || 0, a.emails)}), recolored ${o.recolor || 0} (${pct(o.recolor || 0, a.emails)}), left as sent ${o.light || 0} (${pct(o.light || 0, a.emails)})`);
   log(`auto median bright when shown dark ${a.medianBrightShownDark}; time median ${a.ms.median} ms, p95 ${a.ms.p95} ms, max ${a.ms.max} ms`);
+  log(`images: remote images blocked in ${t.imagesBlocked} emails; placeholders drawn dark ${a.images.placeholders}; images given a light backing ${a.images.backed} (in ${a.images.emailsWithBacked} emails)`);
   log(`restore mismatches ${t.restoreMismatches}, errors ${t.errors}`);
 }
 

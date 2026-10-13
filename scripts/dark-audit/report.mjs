@@ -34,6 +34,7 @@ export function buildReport({ when, modes, summary, results }) {
   const autoLine = auto?.outcomes ? `<p class="dim small">What MailFlow shows: ${Object.entries(OUTCOME).map(([k, label]) => `${label} ${auto.outcomes[k] || 0} (${pct(auto.outcomes[k] || 0, auto.emails)})`).join(', ')}.
     Median bright area when shown dark ${auto.medianBrightShownDark === null ? '–' : `${Math.round(auto.medianBrightShownDark * 100)}%`}.
     Time to show dark: median ${auto.ms.median} ms, 95th percentile ${auto.ms.p95} ms, slowest ${auto.ms.max} ms.
+    Images: ${auto.images ? `${auto.images.placeholders} blocked-image placeholders drawn dark, ${auto.images.backed} images given a light backing` : '–'}.
     Put back as sent exactly: <span class="${summary.restoreMismatches ? 'bad' : ''}">${summary.restoreMismatches ? `${summary.restoreMismatches} mismatches` : 'every email'}</span>.</p>` : '';
 
   const cards = results.map(r => {
@@ -41,7 +42,7 @@ export function buildReport({ when, modes, summary, results }) {
       const m = r.modes[mode];
       const worst = (m.worst || []).map(w => `<li><span class="ratio">${w.ratio}</span> <span class="dim">was ${w.lightRatio}</span> ${esc(w.sample)}</li>`).join('');
       return `<div class="panel" data-mode="${esc(mode)}" data-verdict="${esc(m.verdict)}" data-regressed="${m.regressed}" data-bright="${m.bright}">
-        <div class="tag ${esc(m.verdict)}">${esc(mode)}${m.outcome ? ` · ${esc(OUTCOME[m.outcome] || m.outcome)}` : ''} · ${esc(m.verdict)}${m.regressed ? ` · ${m.regressed} chars` : ''} · ${Math.round(m.bright * 100)}% bright${m.ms !== undefined ? ` · ${m.ms} ms` : ''}</div>
+        <div class="tag ${esc(m.verdict)}">${esc(mode)}${m.outcome ? ` · ${esc(OUTCOME[m.outcome] || m.outcome)}` : ''} · ${esc(m.verdict)}${m.regressed ? ` · ${m.regressed} chars` : ''} · ${Math.round(m.bright * 100)}% bright${m.ms !== undefined ? ` · ${m.ms} ms` : ''}${m.images?.backed ? ` · ${m.images.backed} images backed` : ''}</div>
         <a href="shots/${esc(r.key)}-${esc(mode)}.jpg" target="_blank"><img loading="lazy" src="shots/${esc(r.key)}-${esc(mode)}.jpg" alt="${esc(mode)} render"></a>
         ${worst ? `<ul class="worst">${worst}</ul>` : ''}
       </div>`;
@@ -87,7 +88,7 @@ export function buildReport({ when, modes, summary, results }) {
   .hidden { display: none; }
 </style></head><body>
 <h1>Dark audit contact sheet</h1>
-<div class="dim">${esc(when)} · ${light.emails} emails · remote images were blocked, so they show as empty boxes</div>
+<div class="dim">${esc(when)} · ${light.emails} emails · ${summary.imagesBlocked ? `remote images blocked by MailFlow in ${summary.imagesBlocked} (its default)` : 'remote images allowed by MailFlow'}; the audit loads none, so they draw nothing</div>
 <table><thead><tr><th>Mode</th><th>Emails</th><th>Clean</th><th>Minor</th><th>Broken</th><th>Median bright area</th></tr></thead><tbody>${rows}</tbody></table>
 ${autoLine}
 <div class="dim small">Clean: no text that reads in light becomes unreadable (contrast below 3:1). Minor: at most 1% of text, or 20 characters. Bright area: share of the email's pixels that are light; lower is darker.</div>

@@ -51,6 +51,15 @@ export function contrastRatio(a, b) {
 }
 
 // Not <noscript>: the email frame runs without scripts, so a browser shows its content as text.
+// Whether a computed background-image paints anything. A remote background image blocked by
+// MailFlow (backend emailSanitizer.js blockRemoteImages) is left as url("data:,"), which draws
+// nothing, so it counts as none.
+const BLOCKED_IMAGE = /url\(\s*["']?data:,["']?\s*\)/gi;
+export function paintsImage(backgroundImage) {
+  if (!backgroundImage || backgroundImage === 'none') return false;
+  return backgroundImage.replace(BLOCKED_IMAGE, '').replace(/[\s,]/g, '').replace(/none/gi, '') !== '';
+}
+
 const SKIP_PARENTS = new Set(['STYLE', 'SCRIPT', 'TEMPLATE', 'TITLE', 'HEAD']);
 const CLIPPING = new Set(['hidden', 'clip', 'auto', 'scroll']);
 const WHITE = { r: 255, g: 255, b: 255, a: 1 };
@@ -85,7 +94,7 @@ export function measureTextContrast(doc, { canvas = WHITE, samples = false } = {
       if (own.a >= 0.999) overImage = false;
     }
     // An element paints its background image over its own background color.
-    if (s.backgroundImage && s.backgroundImage !== 'none') overImage = true;
+    if (paintsImage(s.backgroundImage)) overImage = true;
     const opacity = parent.opacity * (Number.parseFloat(s.opacity) || 0);
     b = { color, overImage, opacity };
     backgrounds.set(el, b);

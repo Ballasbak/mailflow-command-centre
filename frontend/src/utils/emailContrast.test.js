@@ -2,7 +2,7 @@
 // a real browser by the dark-mode audit harness's self-test (scripts/dark-audit), as it needs layout.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseColor, composite, contrastRatio, summarize } from './emailContrast.js';
+import { parseColor, composite, contrastRatio, summarize, paintsImage } from './emailContrast.js';
 
 describe('parseColor', () => {
   test('reads computed rgb() and rgba(), in both syntaxes', () => {
@@ -53,5 +53,18 @@ describe('summarize', () => {
       { i: 6, chars: 8, ratio: 1, large: false, overImage: false },
     ]);
     assert.deepEqual(s, { chars: 41, overImage: 7, unknown: 3, hidden: 8, unreadable: 5, weak: 9, worst: 2.5 });
+  });
+});
+
+describe('paintsImage', () => {
+  test('an image or gradient paints; none, and images MailFlow blocked, do not', () => {
+    assert.equal(paintsImage('url("https://example.invalid/a.png")'), true);
+    assert.equal(paintsImage('linear-gradient(rgb(0, 0, 0), rgb(255, 255, 255))'), true);
+    assert.equal(paintsImage('none'), false);
+    assert.equal(paintsImage(''), false);
+    assert.equal(paintsImage('url("data:,")'), false, 'blocked, as a computed style reports it');
+    assert.equal(paintsImage('url(data:,)'), false, 'blocked, as the HTML writes it');
+    assert.equal(paintsImage('url("data:,"), url("data:,")'), false);
+    assert.equal(paintsImage('url("data:,"), url("https://example.invalid/b.png")'), true);
   });
 });

@@ -14,6 +14,7 @@
 import { FRAME_STYLE, DARK_DEFAULTS } from './emailFrameDoc.js';
 import { measureTextContrast, compareWithLight } from './emailContrast.js';
 import { planRecolor, applyPlan, themeAnchors } from './darkRecolor.js';
+import { darkenImages } from './darkImages.js';
 
 // Per document: its light measurement (taken once, the text never changes) and how to undo
 // whatever is shown now.
@@ -80,10 +81,14 @@ function finishTransitions(doc) {
 
 const hasSenderDesign = (doc) => Boolean(doc.getElementById(FRAME_STYLE.sender)?.textContent.trim());
 
+// Each way of showing it dark: makes its changes and returns how to undo them, and what it did to
+// images (utils/darkImages.js). MailFlow's blocked-image placeholders are drawn dark either way;
+// images that would vanish get a backing only when MailFlow recolored the email.
+const both = (undoColors, images) => ({ undo: () => { images.undo(); undoColors(); }, images: images.counts });
 const KINDS = {
-  sender: (doc) => switchStyles(doc, true),
-  naive: (doc) => switchStyles(doc, false),
-  recolor: (doc, palette) => applyPlan(planRecolor(doc, palette)),
+  sender: (doc) => both(switchStyles(doc, true), darkenImages(doc)),
+  naive: (doc) => both(switchStyles(doc, false), darkenImages(doc)),
+  recolor: (doc, palette) => both(applyPlan(planRecolor(doc, palette)), darkenImages(doc, { backings: true })),
 };
 
 // Shows `doc` dark. `mode` 'auto' is what the reader uses; 'sender', 'recolor' and 'naive' force
@@ -104,8 +109,11 @@ function showDark(doc, { palette = DARK_DEFAULTS, mode = 'auto', samples = false
   const order = mode === 'auto' ? [...(hasSenderDesign(doc) ? ['sender'] : []), 'recolor'] : [mode];
   const attempts = [];
   let dark = null;
+  let images = null;
   for (const kind of order) {
-    const undo = KINDS[kind](doc, palette);
+    const shown = KINDS[kind](doc, palette);
+    const { undo } = shown;
+    images = shown.images;
     finishTransitions(doc);
     dark = measureTextContrast(doc, { canvas, samples });
     const comparison = compareWithLight(state.light, dark);
@@ -119,11 +127,13 @@ function showDark(doc, { palette = DARK_DEFAULTS, mode = 'auto', samples = false
     finishTransitions(doc);
   }
   state.outcome = 'light';
+  images = null;
   return finish('light');
 
+  // `images` counts what was done to images when shown dark (some may still be loading).
   function finish(outcome) {
     const ms = (win?.performance?.now?.() ?? Date.now()) - started;
-    return { outcome, attempts, ms, ...(samples ? { light: state.light, dark: outcome === 'light' ? state.light : dark } : {}) };
+    return { outcome, attempts, ms, images, ...(samples ? { light: state.light, dark: outcome === 'light' ? state.light : dark } : {}) };
   }
 }
 

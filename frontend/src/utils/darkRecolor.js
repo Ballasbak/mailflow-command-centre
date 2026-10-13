@@ -15,7 +15,7 @@
 // Whether the result is readable is checked afterwards by utils/darkBody.js, which puts the email
 // back if not.
 import { rgbToOklch, oklchToRgb, formatRgb } from './oklch.js';
-import { parseColor, composite, contrastRatio, HIDDEN } from './emailContrast.js';
+import { parseColor, composite, contrastRatio, HIDDEN, paintsImage } from './emailContrast.js';
 
 // Below this lightness a color is already dark and is left alone.
 export const PIVOT = 0.5;
@@ -132,7 +132,7 @@ export function planRecolor(doc, palette) {
     const s = win.getComputedStyle(el);
     let { lightBg, newBg, island } = parent;
     const own = parseColor(s.backgroundColor);
-    const image = s.backgroundImage && s.backgroundImage !== 'none';
+    const image = paintsImage(s.backgroundImage);
     if (island || image || own === null) {
       // Over a background image (or a background color this cannot read): left as sent, and
       // everything inside it too.
