@@ -7083,6 +7083,10 @@ export class ImapManager {
     }, 60_000);
   }
 
+  isWakingSnooze(snoozeId) {
+    return this._wakingSnoozes.has(snoozeId);
+  }
+
   // The snoozed messages that are live (still in the folder they were snoozed into), with what a
   // wake-up needs; `where` narrows them, aliasing the record sm (#269 wakes some by hand).
   async snoozedRows(where, params) {
@@ -7101,11 +7105,24 @@ export class ImapManager {
 
   // Brings one snoozed message back to where it was snoozed from. On its own wake-up it comes back
   // unread, so the reader notices it; brought back by hand (#269) it keeps its read state.
-  // Returns whether it came back.
-  async wakeSnoozed(row, { markUnread = true } = {}) {
-    if (this._wakingSnoozes.has(row.snooze_id)) return false;
-    this._wakingSnoozes.add(row.snooze_id);
+  // `onlyIfDue` (the sweep) leaves a snooze that is no longer due. Returns whether it came back,
+  // false when there was nothing left to wake; a wake of it already under way returns null.
+  async wakeSnoozed(row, { markUnread = true, onlyIfDue = false } = {}) {
+    const snoozeId = row.snooze_id;
+    if (this._wakingSnoozes.has(snoozeId)) return null;
+    this._wakingSnoozes.add(snoozeId);
     try {
+      // `row` can be out of date: the sweep reads every due snooze first and wakes them one by
+      // one, and the reader may unsnooze one by hand, or give it a later time, in between. Read
+      // it again now that this wake holds it. Gone, no longer due, or its message no longer in
+      // the Snoozed folder: nothing to do, where waking it again would move a UID that is not
+      // there and count the message back into its folder twice. Otherwise go on with the
+      // message's UID and read state as they are now.
+      const [live] = await this.snoozedRows(
+        `sm.id = $1${onlyIfDue ? ' AND sm.snooze_until <= NOW()' : ''}`, [snoozeId]);
+      if (!live) return false;
+      row = live;
+
       const accountResult = await query('SELECT * FROM email_accounts WHERE id = $1', [row.account_id]);
       if (!accountResult.rows.length) return false;
       const account = accountResult.rows[0];
@@ -7184,7 +7201,7 @@ export class ImapManager {
       console.error(`Snooze wakeup failed for snooze_id ${row.snooze_id}:`, err.message);
       return false;
     } finally {
-      this._wakingSnoozes.delete(row.snooze_id);
+      this._wakingSnoozes.delete(snoozeId);
     }
   }
 
@@ -7196,7 +7213,7 @@ export class ImapManager {
     for (const row of due.rows) {
       // One the reader is bringing back by hand right now is left to that.
       if (this._wakingSnoozes.has(row.snooze_id)) continue;
-      await this.wakeSnoozed(row);
+      await this.wakeSnoozed(row, { onlyIfDue: true });
     }
 
     // Clean up orphaned snooze records whose message has left the snoozed folder

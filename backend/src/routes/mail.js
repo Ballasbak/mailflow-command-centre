@@ -2302,10 +2302,17 @@ router.post('/messages/:id/unsnooze', async (req, res) => {
   if (!msg) return res.status(404).json({ error: 'Message not found' });
   const rows = msg.message_id ? await snoozedTogether(msg, req.session.userId) : [];
   if (!rows.length) return res.status(404).json({ error: 'Message is not snoozed' });
-  let restored = 0;
+  const notWoken = [];
   for (const row of rows) {
-    if (await imapManager.wakeSnoozed(row, { markUnread: false })) restored += 1;
+    if (!(await imapManager.wakeSnoozed(row, { markUnread: false }))) notWoken.push(row);
   }
+  // One this request did not wake may be back anyway: its own wake-up got there first, or is
+  // bringing it back right now. Only a snooze that is still live and not being woken failed.
+  const stillSnoozed = notWoken.length
+    ? (await imapManager.snoozedRows('sm.id = ANY($1::uuid[])', [notWoken.map(r => r.snooze_id)]))
+      .filter(r => !imapManager.isWakingSnooze(r.snooze_id))
+    : [];
+  const restored = rows.length - stillSnoozed.length;
   if (!restored) return res.status(500).json({ error: 'Failed to bring the message back' });
   notifyMailMutation(rows.map(r => ({ account_id: r.account_id, message_id: r.message_id_header, folder: r.snoozed_folder })), req.session.userId);
   res.json({ ok: true, restored });

@@ -6,7 +6,7 @@ vi.mock('../middleware/auth.js', () => ({
   requireAuth: (req, _res, next) => { req.session = { userId: 'user-1' }; next(); },
 }));
 const imapManager = vi.hoisted(() => ({
-  snoozedRows: vi.fn(), wakeSnoozed: vi.fn(), broadcast: vi.fn(), scheduleCountRefresh: vi.fn(), pluginFacade: {},
+  snoozedRows: vi.fn(), wakeSnoozed: vi.fn(), isWakingSnooze: vi.fn(() => false), broadcast: vi.fn(), scheduleCountRefresh: vi.fn(), pluginFacade: {},
 }));
 vi.mock('../index.js', () => ({ imapManager }));
 
@@ -40,6 +40,7 @@ describe('PATCH /messages/:id/snooze and POST /messages/:id/unsnooze', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     query.mockImplementation(async (sql) => (sql.includes('FROM messages m') ? { rows: [MSG] } : { rows: [] }));
+    imapManager.isWakingSnooze.mockReturnValue(false);
   });
   const call = (method, path, body) => fetch(`${base}/api/mail/messages/${ID}/${path}`, {
     method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined,
@@ -85,5 +86,18 @@ describe('PATCH /messages/:id/snooze and POST /messages/:id/unsnooze', () => {
     expect((await call('POST', 'unsnooze')).status).toBe(500);
     imapManager.snoozedRows.mockResolvedValue([]);
     expect((await call('POST', 'unsnooze')).status).toBe(404);
+  });
+
+  // The message's own wake-up can take it between this request reading the snooze and waking it.
+  it('counts a message its own wake-up brought back first, or is bringing back now', async () => {
+    imapManager.snoozedRows.mockResolvedValueOnce([rowOf(1), rowOf(2)]).mockResolvedValueOnce([rowOf(2)]);
+    imapManager.wakeSnoozed.mockResolvedValueOnce(false).mockResolvedValueOnce(null);
+    imapManager.isWakingSnooze.mockImplementation(id => id === 'sz-2');
+    const res = await call('POST', 'unsnooze');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, restored: 2 });
+    const [where, params] = imapManager.snoozedRows.mock.calls[1];
+    expect(where).toContain('sm.id = ANY');
+    expect(params).toEqual([['sz-1', 'sz-2']]);
   });
 });
