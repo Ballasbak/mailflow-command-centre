@@ -1,6 +1,6 @@
 // A mailbox mark (#376): the emoji where one is set, otherwise the color dot.
 
-import { test, describe, before, afterEach } from 'node:test';
+import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { registerHooks } from 'node:module';
