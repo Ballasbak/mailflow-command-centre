@@ -2165,6 +2165,21 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
                 }} />
                 <span style={{ color: 'var(--text-tertiary)' }}>{message.account_name}</span>
               </div>
+              {/* With images allowed, open-tracking images are still never loaded (the backend's
+                  image proxy): how many, with the email's other facts. */}
+              {!body?.hasBlockedRemoteImages && body?.trackersBlocked > 0 && (
+                <div title={t('message.trackersBlockedHint')} style={{
+                  fontSize: 11, marginTop: 4, marginLeft: 'auto', maxWidth: 170,
+                  display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end',
+                  color: 'var(--text-tertiary)',
+                }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }} aria-hidden="true">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  </svg>
+                  <span>{t('message.trackersBlocked', { count: body.trackersBlocked })}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -2475,20 +2490,6 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
                   >{label}</button>
                 ))}
               </div>
-            </div>
-          )}
-          {/* With images allowed, open-tracking images are still never loaded (the backend's
-              image proxy); say how many, quietly. */}
-          {!body.hasBlockedRemoteImages && body.trackersBlocked > 0 && (
-            <div title={t('message.trackersBlockedHint')} style={{
-              marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6,
-              fontSize: 11, color: 'var(--text-tertiary)',
-            }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }} aria-hidden="true">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-              </svg>
-              <span>{t('message.trackersBlocked', { count: body.trackersBlocked })}</span>
             </div>
           )}
           <div className="msg-card" style={{
