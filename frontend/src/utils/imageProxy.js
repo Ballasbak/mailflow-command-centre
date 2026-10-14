@@ -4,8 +4,10 @@
 // sender, and turns them back where its HTML leaves for the server (ComposeModal's send and draft
 // save): recipients cannot load MailFlow's proxy, and the original HTML comes back byte for byte.
 //
-// The format is the backend's imageProxyPath; the two must agree.
-const PROXIED = /\/api\/mail\/messages\/[0-9a-f-]{36}\/image\?u=([A-Za-z0-9%._~-]*)/gi;
+// The format is the backend's imageProxyPath; the two must agree. It may carry MailFlow's origin
+// in front (a browser writes image URLs out absolute when copying, so a pasted quote has them):
+// that goes too, or the original came out as "https://mail.example.comhttps://…".
+const PROXIED = /(?:https?:\/\/[^\s"'<>()/]+)?\/api\/mail\/messages\/[0-9a-f-]{36}\/image\?u=([A-Za-z0-9%._~-]*)/gi;
 
 export function unproxyImages(html) {
   if (!html) return html;
