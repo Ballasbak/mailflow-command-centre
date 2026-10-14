@@ -2156,15 +2156,21 @@ export function parseSnoozeUntil(until) {
 // messages waiting in the same Snoozed folder until the same time. Snoozing takes the whole reply
 // chain at once, so changing or ending the snooze does too; a later, separate snooze of another
 // message in the thread keeps its own time. As imapManager.snoozedRows returns them.
-function snoozedTogether(msg, userId) {
+//
+// Its conversation is the reply chain the snooze took (gatherSnoozeConversation), not every message
+// sharing its thread_id: that groups by subject too, so two separately snoozed "Build failed"
+// notifications set to the same morning came back, or moved, together.
+async function snoozedTogether(msg, userId) {
+  const chain = await gatherSnoozeConversation(msg);
+  const ids = [...new Set([msg.message_id, ...chain.map(r => r.message_id)].filter(Boolean))];
   return imapManager.snoozedRows(
     `sm.user_id = $1 AND sm.account_id = $2 AND sm.snoozed_folder = $3
      AND sm.snooze_until = (
        SELECT own.snooze_until FROM snoozed_messages own
        WHERE own.user_id = $1 AND own.account_id = $2 AND own.message_id_header = $4 AND own.snoozed_folder = $3
        ORDER BY own.snooze_until LIMIT 1)
-     AND (m.message_id = $4 OR ($5::text IS NOT NULL AND m.thread_id = $5))`,
-    [userId, msg.account_id, msg.folder, msg.message_id, msg.thread_id || null]
+     AND m.message_id = ANY($5::text[])`,
+    [userId, msg.account_id, msg.folder, msg.message_id, ids]
   );
 }
 
