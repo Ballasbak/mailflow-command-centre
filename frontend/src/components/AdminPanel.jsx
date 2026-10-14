@@ -1303,19 +1303,14 @@ function ThemesTab() {
       </div>
 
       {/* Dark email bodies (#228): what is shown dark, and why the rest is not, is in utils/darkScheme.js. */}
-      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 20, cursor: 'pointer' }}>
-        <input
-          id="dark-email-bodies"
-          type="checkbox"
+      <div style={{ marginBottom: 20 }}>
+        <ToggleRow
+          label={t('admin.appearance.darkEmailBodies')}
+          desc={t('admin.appearance.darkEmailBodiesDesc')}
           checked={darkEmailBodies}
-          onChange={event => setDarkEmailBodies(event.target.checked)}
-          style={{ marginTop: 2 }}
+          onChange={setDarkEmailBodies}
         />
-        <span>
-          <span style={{ display: 'block', fontSize: 13, color: 'var(--text-primary)' }}>{t('admin.appearance.darkEmailBodies')}</span>
-          <span style={{ display: 'block', fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2 }}>{t('admin.appearance.darkEmailBodiesDesc')}</span>
-        </span>
-      </label>
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
         {Object.entries(THEMES).map(([key, themeObj]) => (

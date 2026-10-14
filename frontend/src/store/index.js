@@ -152,7 +152,7 @@ export const useStore = create((set, get) => ({
         enabledPlugins: [], autoLockMinutes: 0, blockRemoteImages: true,
         imageWhitelist: { addresses: [], domains: [] }, shortcuts: {}, aiActions: null,
         hiddenFolders: {}, categorizationEnabled: false, gtdPetSlug: null,
-        autoOpenReplyDrafts: false, afterRemove: 'next', darkEmailBodies: false,
+        autoOpenReplyDrafts: false, afterRemove: 'next', darkEmailBodies: true,
       } : {}),
     }));
   },
@@ -773,9 +773,9 @@ export const useStore = create((set, get) => ({
     schedulePrefSave({ afterRemove: val });
   },
 
-  // Show email bodies dark in a dark theme where that is safe (#228, utils/darkScheme.js). Off by
-  // default: a message can always be switched to dark, or back, on its own.
-  darkEmailBodies: localStorage.getItem('mailflow_dark_email_bodies') === 'true',
+  // Show email bodies dark in a dark theme where that is safe (#228, utils/darkScheme.js). On by
+  // default; a light theme never darkens an email, and any message can be switched back on its own.
+  darkEmailBodies: localStorage.getItem('mailflow_dark_email_bodies') !== 'false',
   setDarkEmailBodies: (value) => {
     localStorage.setItem('mailflow_dark_email_bodies', String(Boolean(value)));
     set({ darkEmailBodies: Boolean(value) });
