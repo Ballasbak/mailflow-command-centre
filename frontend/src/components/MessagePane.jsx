@@ -664,11 +664,19 @@ export default function MessagePane({ windowMessageId = null, onWindowClose = nu
     openForwardFromMessage(message, { openCompose, getMessageBody: loadedBody });
   };
 
+  // The star fills at once, as in the list: the server answers only once the mail server has
+  // the flag, which takes seconds on Gmail. Put back, with a notice, if that fails.
   const handleStarToggle = async () => {
     if (!message) return;
+    const { id } = message;
     const newVal = !message.is_starred;
-    await api.markStarred(message.id, newVal);
-    updateMessage(message.id, { is_starred: newVal });
+    updateMessage(id, { is_starred: newVal });
+    try {
+      await api.markStarred(id, newVal);
+    } catch (err) {
+      updateMessage(id, { is_starred: !newVal });
+      addNotification({ type: 'error', title: t('common.error', { message: err.message }) });
+    }
   };
 
   const handlePrint = () => {

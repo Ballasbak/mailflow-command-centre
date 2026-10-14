@@ -136,12 +136,14 @@ export default function ConversationMessageCard({ message, expanded, onToggle, o
   const [showAiMenu, setShowAiMenu] = useState(false);
   const runAi = (action) => { setShowAiMenu(false); ai.run(action); };
 
+  // Fills at once, as in the list and the reading pane; put back if the server refuses it.
   const handleStar = async () => {
     const starred = !message.is_starred;
+    onUpdate?.(message.id, { is_starred: starred });
     try {
       await api.markStarred(message.id, starred);
-      onUpdate?.(message.id, { is_starred: starred });
     } catch (err) {
+      onUpdate?.(message.id, { is_starred: !starred });
       addNotification({ type: 'error', title: t('common.error', { message: err.message }) });
     }
   };
