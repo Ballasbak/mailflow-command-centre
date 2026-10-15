@@ -60,6 +60,26 @@ public class MailFlowOidcLoginTest {
     }
 
     @Test
+    public void browserQueryCharactersDoNotChangeTheOriginOrPathPolicy() {
+        for (String query : new String[] { "code=a|b&state=test", "code={value}", "code=100%" }) {
+            assertTrue(MailFlowOidcLogin.isReturnUrl(HOST, HOST + "/auth/oidc/corporate/callback?" + query));
+            assertTrue(MailFlowOidcLogin.isAllowedUrl(HOST, "https://id.example.com/login?" + query));
+            assertTrue(MailFlowOidcLogin.isStartUrl(HOST, HOST + "/auth/oidc/corporate/start?" + query));
+            assertFalse(MailFlowOidcLogin.isStartUrl(HOST, "https://mail.example.com.attacker.test/auth/oidc/corporate/start?" + query));
+        }
+        assertFalse(MailFlowOidcLogin.isReturnUrl(HOST, HOST + "/login#?oidc_error=test"));
+    }
+
+    @Test
+    public void logoutReturnsOnlyToTheConfiguredLoginPage() {
+        assertTrue(MailFlowOidcLogin.isLogoutReturnUrl(HOST, HOST + "/login"));
+        assertTrue(MailFlowOidcLogin.isLogoutReturnUrl(HOST, HOST + "/login?result=a|b"));
+        assertFalse(MailFlowOidcLogin.isLogoutReturnUrl(HOST, "https://id.example.com/login"));
+        assertFalse(MailFlowOidcLogin.isLogoutReturnUrl(HOST, HOST + "/login/extra"));
+        assertFalse(MailFlowOidcLogin.isLogoutReturnUrl(HOST, HOST + "/auth/oidc/corporate/callback"));
+    }
+
+    @Test
     public void providerNavigationRequiresHttpsAndNeverAcceptsLocalSchemes() {
         assertTrue(MailFlowOidcLogin.isAllowedUrl(HOST, "https://id.example.com/authorize"));
         assertTrue(MailFlowOidcLogin.isAllowedUrl(HOST, "https://federated.example.com/login"));

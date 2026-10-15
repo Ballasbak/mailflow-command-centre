@@ -49,6 +49,7 @@ export async function installCapacitorNativeBridge() {
         return result?.host || host;
       },
       resetHost: async () => callNative('resetHost'),
+      openOidcLogout: async (url) => callNative('openOidcLogout', { url }, { handled: false }),
       badges: {
         ...existingBridge.badges,
         setUnreadCount: async (count) => callNative('setUnreadCount', { count }),
