@@ -17,7 +17,7 @@ async function callNative(method, args, fallback = null) {
     const MailFlowNative = getPlugin();
     return await MailFlowNative[method](args);
   } catch (error) {
-    if (String(error?.message || error).includes('not implemented')) {
+    if (method !== 'openOidcLogout' && String(error?.message || error).includes('not implemented')) {
       pluginUnavailable = true;
     }
     return fallback;
