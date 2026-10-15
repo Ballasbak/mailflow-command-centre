@@ -3,8 +3,10 @@ package sh.mailflow.app;
 import android.app.Dialog;
 import android.graphics.Bitmap;
 import android.net.Uri;
+import android.net.http.SslError;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
+import android.webkit.SslErrorHandler;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -93,8 +95,11 @@ final class MailFlowOidcLogin {
             appView.loadUrl(Uri.parse(host).buildUpon().path(errorPath).appendQueryParameter("oidc_error", message).build().toString());
         };
         loginView.setWebViewClient(new WebViewClient() {
+            private String mainFrameUrl = startUrl;
+
             @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                mainFrameUrl = url;
                 Uri page = Uri.parse(url);
                 address.setText(new Uri.Builder().scheme(page.getScheme())
                     .encodedAuthority(page.getHost() + (page.getPort() == -1 ? "" : ":" + page.getPort())).build().toString());
@@ -114,11 +119,20 @@ final class MailFlowOidcLogin {
                     }
                     return true;
                 }
+                if (request.isForMainFrame()) mainFrameUrl = url;
                 if (!request.isForMainFrame() || !(logout ? isLogoutReturnUrl(host, url) : isReturnUrl(host, url))) return false;
 
                 dialog.dismiss();
                 appView.loadUrl(url);
                 return true;
+            }
+
+            @Override
+            public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
+                handler.cancel();
+                if (error.getUrl().equals(mainFrameUrl)) {
+                    fail.accept("Could not verify the OIDC provider certificate: " + Uri.parse(error.getUrl()).getHost());
+                }
             }
 
             @Override

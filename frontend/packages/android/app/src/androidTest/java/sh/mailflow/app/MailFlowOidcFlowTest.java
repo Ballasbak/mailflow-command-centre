@@ -19,6 +19,11 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.security.KeyStore;
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLServerSocket;
+import javax.net.ssl.SSLSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -36,6 +41,7 @@ public class MailFlowOidcFlowTest {
     private final Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
     private final List<String> requests = java.util.Collections.synchronizedList(new ArrayList<>());
     private ServerSocket server;
+    private SSLServerSocket tlsServer;
     private MainActivity activity;
     private WebView appView;
     private String host;
@@ -86,10 +92,7 @@ public class MailFlowOidcFlowTest {
         instrumentation.getTargetContext().getSharedPreferences("mailflow-native", 0).edit().putString("host", host).commit();
         activity = (MainActivity) instrumentation.startActivitySync(new Intent(instrumentation.getTargetContext(), MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         instrumentation.waitForIdleSync();
-        instrumentation.runOnMainSync(() -> {
-            appView = activity.getBridge().getWebView();
-
-        });
+        instrumentation.runOnMainSync(() -> appView = activity.getBridge().getWebView());
         waitForScript("location.origin === '" + host + "' && document.readyState === 'complete' && !!window.mailflowNative");
         instrumentation.runOnMainSync(() -> appView.getSettings().setUserAgentString(appView.getSettings().getUserAgentString() + " MailFlowAppTest"));
     }
@@ -98,6 +101,7 @@ public class MailFlowOidcFlowTest {
     public void stop() throws Exception {
         if (activity != null) instrumentation.runOnMainSync(() -> activity.finish());
         if (server != null) server.close();
+        if (tlsServer != null) tlsServer.close();
     }
 
     private String evaluate(WebView view, String script) throws Exception {
@@ -200,4 +204,55 @@ public class MailFlowOidcFlowTest {
             waitForScript("location.search.includes('oidc_error=') && location.pathname === '" + (action.equals("link") ? "/" : "/login") + "'");
         }
     }
+    @Test
+    public void certificateErrorsOnlyCloseTheWindowForMainPageLoads() throws Exception {
+        KeyStore keys = KeyStore.getInstance("PKCS12");
+        try (java.io.InputStream input = instrumentation.getContext().getAssets().open("untrusted-provider.p12")) {
+            keys.load(input, "test-only".toCharArray());
+        }
+        KeyManagerFactory managers = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        managers.init(keys, "test-only".toCharArray());
+        SSLContext tls = SSLContext.getInstance("TLS");
+        tls.init(managers.getKeyManagers(), null, null);
+        tlsServer = (SSLServerSocket) tls.getServerSocketFactory().createServerSocket(0, 10, InetAddress.getByName("127.0.0.1"));
+        Thread serving = new Thread(() -> {
+            while (!tlsServer.isClosed()) {
+                try (SSLSocket socket = (SSLSocket) tlsServer.accept()) {
+                    socket.setSoTimeout(2000);
+                    socket.startHandshake();
+                } catch (java.io.IOException expected) {
+                    // The WebView must reject this test server's self-signed certificate.
+                }
+            }
+        });
+        serving.setDaemon(true);
+        serving.start();
+        String provider = "https://127.0.0.1:" + tlsServer.getLocalPort();
+        for (String action : new String[] { "login", "link" }) {
+            instrumentation.runOnMainSync(() -> MailFlowOidcLogin.open(activity, appView, host, host + "/provider?action=" + action));
+            AtomicReference<WebView> login = new AtomicReference<>();
+            instrumentation.runOnMainSync(() -> {
+                for (View root : WindowInspector.getGlobalWindowViews()) {
+                    WebView found = findLoginView(root);
+                    if (found != null) login.set(found);
+                }
+            });
+            assertNotNull(login.get());
+            long deadline = System.currentTimeMillis() + 10000;
+            while (!"true".equals(evaluate(login.get(), "document.readyState === 'complete' && location.pathname === '/provider'"))) {
+                assertTrue("Provider page did not load", System.currentTimeMillis() < deadline);
+                Thread.sleep(50);
+            }
+            evaluate(login.get(), "window.imageFailed=false; var img=new Image(); img.onerror=()=>window.imageFailed=true; img.src='" + provider + "/image'; document.body.append(img)");
+            deadline = System.currentTimeMillis() + 10000;
+            while (!"true".equals(evaluate(login.get(), "window.imageFailed === true"))) {
+                assertTrue("Certificate failure did not reject the image", System.currentTimeMillis() < deadline);
+                Thread.sleep(50);
+            }
+            evaluate(login.get(), "location.href='" + provider + "/login'");
+            waitForScript("location.search.includes('oidc_error=') && location.pathname === '" + (action.equals("link") ? "/" : "/login") + "'");
+            assertLoginClosed();
+        }
+    }
+
 }
