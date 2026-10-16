@@ -189,7 +189,8 @@
       "aiApply": "Applica",
       "aiDismiss": "Ignora",
       "aiGenerating": "Generazione in corso…",
-      "aiError": "Errore IA: {{message}}"
+      "aiError": "Errore IA: {{message}}",
+      "aiTooLong": "questa bozza ha {{count}} caratteri, più dei {{max}} che l'IA può gestire. Accorciala o rimuovi il testo citato, poi riprova."
     },
     "priority": "Priorità",
     "priorityHigh": "Alta priorità",
@@ -256,6 +257,7 @@
     "aiActions": "Azioni IA",
     "manageAiActions": "Gestisci azioni…",
     "aiRegenerate": "Rigenera",
+    "aiTruncated": "Basato sul primo {{percent}}% di questa email. Il resto era troppo lungo per essere inviato all'IA.",
     "aiExpand": "Espandi",
     "aiCollapse": "Comprimi",
     "aiCopy": "Copia",

@@ -189,7 +189,8 @@
       "aiApply": "Übernehmen",
       "aiDismiss": "Verwerfen",
       "aiGenerating": "Wird erstellt…",
-      "aiError": "KI-Fehler: {{message}}"
+      "aiError": "KI-Fehler: {{message}}",
+      "aiTooLong": "Dieser Entwurf hat {{count}} Zeichen, mehr als die {{max}}, die die KI verarbeiten kann. Kürzen Sie ihn oder entfernen Sie den zitierten Text und versuchen Sie es erneut."
     },
     "priority": "Priorität",
     "priorityHigh": "Hohe Priorität",
@@ -256,6 +257,7 @@
     "aiActions": "KI-Aktionen",
     "manageAiActions": "Aktionen verwalten…",
     "aiRegenerate": "Neu generieren",
+    "aiTruncated": "Basiert auf den ersten {{percent}} % dieser E-Mail. Der Rest war zu lang für die KI.",
     "aiExpand": "Erweitern",
     "aiCollapse": "Einklappen",
     "aiCopy": "Kopieren",

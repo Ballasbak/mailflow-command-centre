@@ -189,7 +189,8 @@
       "aiApply": "应用",
       "aiDismiss": "关闭",
       "aiGenerating": "生成中…",
-      "aiError": "AI 错误：{{message}}"
+      "aiError": "AI 错误：{{message}}",
+      "aiTooLong": "此草稿有 {{count}} 个字符，超过 AI 可接受的 {{max}} 个。请缩短内容或删除引用的文字后重试。"
     },
     "priority": "优先级",
     "priorityHigh": "高优先级",
@@ -256,6 +257,7 @@
     "aiActions": "AI 操作",
     "manageAiActions": "管理操作…",
     "aiRegenerate": "重新生成",
+    "aiTruncated": "仅基于此邮件的前 {{percent}}%。其余内容过长，未发送给 AI。",
     "aiExpand": "展开",
     "aiCollapse": "收起",
     "aiCopy": "复制",

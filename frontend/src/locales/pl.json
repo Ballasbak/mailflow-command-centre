@@ -189,7 +189,8 @@
       "aiApply": "Zastosuj",
       "aiDismiss": "Odrzuć",
       "aiGenerating": "Generowanie…",
-      "aiError": "Błąd AI: {{message}}"
+      "aiError": "Błąd AI: {{message}}",
+      "aiTooLong": "ta wersja robocza ma {{count}} znaków, więcej niż {{max}}, które przyjmuje AI. Skróć ją lub usuń cytowany tekst i spróbuj ponownie."
     },
     "priority": "Priorytet",
     "priorityHigh": "Wysoki priorytet",
@@ -258,6 +259,7 @@
     "aiActions": "Działania AI",
     "manageAiActions": "Zarządzaj działaniami…",
     "aiRegenerate": "Wygeneruj ponownie",
+    "aiTruncated": "Na podstawie pierwszych {{percent}}% tej wiadomości. Reszta była zbyt długa, by wysłać ją do AI.",
     "aiExpand": "Rozwiń",
     "aiCollapse": "Zwiń",
     "aiCopy": "Kopiuj",
