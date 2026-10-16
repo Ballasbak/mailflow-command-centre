@@ -135,23 +135,34 @@ public class MailFlowNativePlugin extends Plugin {
 
     private void persistHost(PluginCall call, String normalizedHost) {
         getPrefs(getContext()).edit().putString(PREF_HOST, normalizedHost).apply();
-        if (getActivity() instanceof MainActivity) {
-            ((MainActivity) getActivity()).configureNativeMessageBridge(normalizedHost);
-        }
         MailFlowBackgroundSync.schedule(getContext());
 
+        boolean opensHost = getActivity() instanceof MainActivity;
         JSObject result = new JSObject();
         result.put("host", normalizedHost);
+        result.put("navigating", opensHost);
         call.resolve(result);
+
+        // The app opens the host itself rather than leaving it to the setup page (#621). Adding
+        // the bridge's WebMessageListener to the WebView while the setup page is open stops
+        // Capacitor's replies to that page on newer WebView builds (145 on Android 17), so the
+        // setup page never heard back from saveHost and stayed put. Whether or not the reply
+        // above arrives, the host loads, with the listener in place for it.
+        if (opensHost) {
+            MainActivity activity = (MainActivity) getActivity();
+            activity.runOnUiThread(() -> activity.openConfiguredHost(normalizedHost));
+        }
     }
 
     @PluginMethod
     public void resetHost(PluginCall call) {
         getPrefs(getContext()).edit().remove(PREF_HOST).apply();
-        if (getActivity() instanceof MainActivity) {
-            ((MainActivity) getActivity()).configureNativeMessageBridge(null);
-        }
-        getActivity().runOnUiThread(() -> getBridge().getWebView().loadUrl(SETUP_URL));
+        getActivity().runOnUiThread(() -> {
+            if (getActivity() instanceof MainActivity) {
+                ((MainActivity) getActivity()).configureNativeMessageBridge(null);
+            }
+            getBridge().getWebView().loadUrl(SETUP_URL);
+        });
         call.resolve();
     }
 
