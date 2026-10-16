@@ -24,25 +24,24 @@ final class MailFlowOidcLogin {
     private MailFlowOidcLogin() {}
 
     static boolean isStartUrl(String host, String url) {
-        if (!NativeSecurity.isSameOrigin(host, navigationUrl(url))) return false;
-        try {
-            return new URI(navigationUrl(url)).getRawPath().matches("/auth/oidc/[^/]+/start");
-        } catch (Exception ignored) {
-            return false;
-        }
+        return configuredPath(host, url).matches("/auth/oidc/[^/]+/start");
     }
 
     static boolean isReturnUrl(String host, String url) {
-        if (!NativeSecurity.isSameOrigin(host, navigationUrl(url))) return false;
+        String path = configuredPath(host, url);
+        if (path.matches("/auth/oidc/[^/]+/callback")) return true;
+        if (!"/".equals(path) && !"/login".equals(path)) return false;
+        String[] query = url.split("#", 2)[0].split("\\?", 2);
+        return query.length == 2 && query[1].matches("(^|.*&)(oidc_error|oidc_success)=.*");
+    }
+
+    private static String configuredPath(String host, String url) {
+        String navigation = navigationUrl(url);
+        if (!NativeSecurity.isSameOrigin(host, navigation)) return "";
         try {
-            URI uri = new URI(navigationUrl(url));
-            String path = uri.getRawPath();
-            if (path.matches("/auth/oidc/[^/]+/callback")) return true;
-            String[] query = url.split("#", 2)[0].split("\\?", 2);
-            return ("/".equals(path) || "/login".equals(path))
-                && query.length == 2 && query[1].matches("(^|.*&)(oidc_error|oidc_success)=.*");
+            return new URI(navigation).getRawPath();
         } catch (Exception ignored) {
-            return false;
+            return "";
         }
     }
 
@@ -56,12 +55,7 @@ final class MailFlowOidcLogin {
     }
 
     static boolean isLogoutReturnUrl(String host, String url) {
-        if (!NativeSecurity.isSameOrigin(host, navigationUrl(url))) return false;
-        try {
-            return "/login".equals(new URI(navigationUrl(url)).getRawPath());
-        } catch (Exception ignored) {
-            return false;
-        }
+        return "/login".equals(configuredPath(host, url));
     }
 
     static void open(MainActivity activity, WebView appView, String host, String startUrl) {
@@ -140,22 +134,19 @@ final class MailFlowOidcLogin {
                 if (request.isForMainFrame()) fail.accept("Could not load the OIDC provider: " + request.getUrl().getHost());
             }
         });
-        LifecycleOwner owner = activity;
         DefaultLifecycleObserver observer = new DefaultLifecycleObserver() {
             @Override
             public void onDestroy(LifecycleOwner owner) {
                 dialog.dismiss();
             }
         };
-        owner.getLifecycle().addObserver(observer);
+        activity.getLifecycle().addObserver(observer);
         if (logout) dialog.setOnCancelListener(ignored -> appView.loadUrl(Uri.parse(host).buildUpon().path("/login")
             .appendQueryParameter("oidc_error", "Provider sign-out was cancelled; its session may still be active.").build().toString()));
         dialog.setOnDismissListener(ignored -> {
-            owner.getLifecycle().removeObserver(observer);
+            activity.getLifecycle().removeObserver(observer);
             loginView.stopLoading();
-            if (loginView.getParent() instanceof ViewGroup) {
-                ((ViewGroup) loginView.getParent()).removeView(loginView);
-            }
+            content.removeView(loginView);
             loginView.destroy();
         });
         dialog.setContentView(content);

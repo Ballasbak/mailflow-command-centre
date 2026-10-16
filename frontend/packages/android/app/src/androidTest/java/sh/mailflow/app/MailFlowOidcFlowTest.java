@@ -113,9 +113,13 @@ public class MailFlowOidcFlowTest {
     }
 
     private void waitForScript(String script) throws Exception {
+        waitForScript(appView, script);
+    }
+
+    private void waitForScript(WebView view, String script) throws Exception {
         long deadline = System.currentTimeMillis() + 10000;
         while (System.currentTimeMillis() < deadline) {
-            if ("true".equals(evaluate(appView, script))) return;
+            if ("true".equals(evaluate(view, script))) return;
             Thread.sleep(50);
         }
         fail("Timed out: " + script);
@@ -155,9 +159,7 @@ public class MailFlowOidcFlowTest {
         });
     }
 
-    @Test
-    public void loginAndLogoutShareCookiesWithoutExposingNativeFunctions() throws Exception {
-        evaluate(appView, "location.href='/auth/oidc/company/start'");
+    private WebView waitForLoginView() throws Exception {
         AtomicReference<WebView> login = new AtomicReference<>();
         long deadline = System.currentTimeMillis() + 10000;
         while (login.get() == null && System.currentTimeMillis() < deadline) {
@@ -170,18 +172,21 @@ public class MailFlowOidcFlowTest {
             Thread.sleep(50);
         }
         assertNotNull("OIDC link must open a separate WebView; app=" + evaluate(appView, "location.href") + "; requests=" + requests, login.get());
-        deadline = System.currentTimeMillis() + 10000;
-        while (!"true".equals(evaluate(login.get(), "location.pathname === '/provider' && document.readyState === 'complete'"))) {
-            assertTrue("Provider page did not load", System.currentTimeMillis() < deadline);
-            Thread.sleep(50);
-        }
+        return login.get();
+    }
+
+    @Test
+    public void loginAndLogoutShareCookiesWithoutExposingNativeFunctions() throws Exception {
+        evaluate(appView, "location.href='/auth/oidc/company/start'");
+        WebView login = waitForLoginView();
+        waitForScript(login, "location.pathname === '/provider' && document.readyState === 'complete'");
         instrumentation.runOnMainSync(() -> {
             boolean visibleHost = false;
             for (View root : WindowInspector.getGlobalWindowViews()) visibleHost |= containsHost(root);
             assertTrue("Provider origin must be visible", visibleHost);
         });
-        assertEquals("true", evaluate(login.get(), "typeof MailFlowAndroid === 'undefined' && typeof androidBridge === 'undefined' && typeof Capacitor === 'undefined'"));
-        evaluate(login.get(), "location.href='/auth/oidc/company/callback?code=a|b&state=test'");
+        assertEquals("true", evaluate(login, "typeof MailFlowAndroid === 'undefined' && typeof androidBridge === 'undefined' && typeof Capacitor === 'undefined'"));
+        evaluate(login, "location.href='/auth/oidc/company/callback?code=a|b&state=test'");
         waitForScript("location.search === '?oidc_success=login' && typeof window.mailflowNative?.openOidcLogout === 'function'");
         assertLoginClosed();
         String callback = findRequest("GET /auth/oidc/company/callback");
@@ -204,6 +209,7 @@ public class MailFlowOidcFlowTest {
             waitForScript("location.search.includes('oidc_error=') && location.pathname === '" + (action.equals("link") ? "/" : "/login") + "'");
         }
     }
+
     @Test
     public void certificateErrorsOnlyCloseTheWindowForMainPageLoads() throws Exception {
         KeyStore keys = KeyStore.getInstance("PKCS12");
@@ -230,29 +236,13 @@ public class MailFlowOidcFlowTest {
         String provider = "https://127.0.0.1:" + tlsServer.getLocalPort();
         for (String action : new String[] { "login", "link" }) {
             instrumentation.runOnMainSync(() -> MailFlowOidcLogin.open(activity, appView, host, host + "/provider?action=" + action));
-            AtomicReference<WebView> login = new AtomicReference<>();
-            instrumentation.runOnMainSync(() -> {
-                for (View root : WindowInspector.getGlobalWindowViews()) {
-                    WebView found = findLoginView(root);
-                    if (found != null) login.set(found);
-                }
-            });
-            assertNotNull(login.get());
-            long deadline = System.currentTimeMillis() + 10000;
-            while (!"true".equals(evaluate(login.get(), "document.readyState === 'complete' && location.pathname === '/provider'"))) {
-                assertTrue("Provider page did not load", System.currentTimeMillis() < deadline);
-                Thread.sleep(50);
-            }
-            evaluate(login.get(), "window.imageFailed=false; var img=new Image(); img.onerror=()=>window.imageFailed=true; img.src='" + provider + "/image'; document.body.append(img)");
-            deadline = System.currentTimeMillis() + 10000;
-            while (!"true".equals(evaluate(login.get(), "window.imageFailed === true"))) {
-                assertTrue("Certificate failure did not reject the image", System.currentTimeMillis() < deadline);
-                Thread.sleep(50);
-            }
-            evaluate(login.get(), "location.href='" + provider + "/login'");
+            WebView login = waitForLoginView();
+            waitForScript(login, "document.readyState === 'complete' && location.pathname === '/provider'");
+            evaluate(login, "window.imageFailed=false; var img=new Image(); img.onerror=()=>window.imageFailed=true; img.src='" + provider + "/image'; document.body.append(img)");
+            waitForScript(login, "window.imageFailed === true");
+            evaluate(login, "location.href='" + provider + "/login'");
             waitForScript("location.search.includes('oidc_error=') && location.pathname === '" + (action.equals("link") ? "/" : "/login") + "'");
             assertLoginClosed();
         }
     }
-
 }
