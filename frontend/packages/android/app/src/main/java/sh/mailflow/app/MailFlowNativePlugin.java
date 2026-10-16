@@ -73,7 +73,10 @@ public class MailFlowNativePlugin extends Plugin {
     private static final String PREF_UPDATE_VERSION = "update_version";
     private static final String PREF_UPDATE_RELEASE_NAME = "update_release_name";
     private static final String PREF_UPDATE_DIGEST = "update_digest";
-    private static final String SETUP_URL = "file:///android_asset/public/index.html";
+    // Served by Capacitor's local server (bridge.getLocalUrl()), as on first launch: a file:// copy
+    // of the setup page has no Capacitor bridge, so a host entered there was opened in the
+    // browser and never saved.
+    private static final String SETUP_PATH = "/index.html";
     private static final String UPDATE_RELEASE_URL = "https://api.github.com/repos/maathimself/mailflow/releases/latest";
     
     /* Old dev fork url
@@ -161,7 +164,7 @@ public class MailFlowNativePlugin extends Plugin {
             if (getActivity() instanceof MainActivity) {
                 ((MainActivity) getActivity()).configureNativeMessageBridge(null);
             }
-            getBridge().getWebView().loadUrl(SETUP_URL);
+            getBridge().getWebView().loadUrl(getBridge().getLocalUrl() + SETUP_PATH);
         });
         call.resolve();
     }
