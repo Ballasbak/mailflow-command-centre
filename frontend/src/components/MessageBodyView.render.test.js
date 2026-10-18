@@ -221,3 +221,63 @@ describe('frameSurface', () => {
     assert.equal(frameSurface(null), null);
   });
 });
+
+// A wide email is fitted to the frame again whenever the frame's width changes (#641): fitted
+// once on open, it was cut off on the right after the sidebar or a divider narrowed the pane.
+describe('fitting a wide email to the frame', () => {
+  const tick = () => new Promise(r => setTimeout(r, 0));
+  test('refits when the frame gets narrower or wider, and ignores its height', async () => {
+    const observers = [];
+    const RealRO = globalThis.ResizeObserver;
+    const RO = class { constructor(cb) { this.cb = cb; this.targets = []; observers.push(this); } observe(t) { this.targets.push(t); } unobserve() {} disconnect() { this.targets = []; } };
+    globalThis.ResizeObserver = RO;
+    dom.window.ResizeObserver = RO;
+    try {
+      const iframeRef = React.createRef();
+      const emailScaleRef = { current: 1 };
+      await React.act(async () => root.render(null));
+      await React.act(async () => {
+        root.render(React.createElement(MessageBodyView, {
+          body: { html: '<table width="900"></table>', darkCss: '' }, messageId: 'fit-1', emailScaleRef,
+          hasNativeContextTarget: false, onContextMenu: null, iframeRef,
+        }));
+      });
+      const iframe = iframeRef.current;
+      let frameW = 600;
+      Object.defineProperty(iframe, 'offsetWidth', { configurable: true, get: () => frameW });
+      const doc = iframe.contentDocument;
+      for (const el of [doc.body, doc.documentElement]) Object.defineProperty(el, 'scrollWidth', { configurable: true, get: () => 900 });
+      const wrapper = doc.createElement('div');
+      wrapper.id = 'mf-scale-wrapper';
+      wrapper.setAttribute('data-mf-doc', /data-mf-doc="(\d+)"/.exec(iframe.getAttribute('srcdoc'))[1]);
+      doc.body.appendChild(wrapper);
+      for (let i = 0; i < 5 && !observers.some(o => o.targets.includes(iframe)); i += 1) await tick();
+      assert.equal(emailScaleRef.current, 600 / 900, 'fitted on open');
+      const frameObserver = observers.find(o => o.targets.includes(iframe));
+      assert.ok(frameObserver, 'the frame itself is watched');
+
+      frameW = 450; // the sidebar opened
+      frameObserver.cb([]);
+      for (let i = 0; i < 3; i += 1) await tick();
+      assert.equal(emailScaleRef.current, 0.5);
+      assert.equal(wrapper.style.transform, 'scale(0.5)');
+
+      const before = wrapper.getAttribute('style');
+      iframe.style.height = '900px'; // only the height, which this code sets itself
+      frameObserver.cb([]);
+      for (let i = 0; i < 3; i += 1) await tick();
+      assert.equal(wrapper.getAttribute('style'), before, 'not fitted again');
+
+      frameW = 1200; // and closed, with room to spare
+      frameObserver.cb([]);
+      for (let i = 0; i < 3; i += 1) await tick();
+      assert.equal(emailScaleRef.current, 1);
+      assert.equal(wrapper.style.transform, '');
+      await React.act(async () => root.render(null));
+      assert.deepEqual(frameObserver.targets, [], 'stops watching when the email is left');
+    } finally {
+      globalThis.ResizeObserver = RealRO;
+      dom.window.ResizeObserver = RealRO;
+    }
+  });
+});
