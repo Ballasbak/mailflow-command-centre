@@ -2260,10 +2260,17 @@ describe('inline images the body never shows are listed as attachments', () => {
         type: 'multipart/related',
         childNodes: [html(), attachedImage('2', { id: '<a@x>', dispositionParameters: { filename: 'a.png' } })],
       };
-      for (const doc of ['<img src="cid:%E0%A4%A">'.repeat(80_000), Array.from({ length: 80_000 }, (_, i) => `<img src="cid:%E0%A4%41${i}">`).join('')]) {
+      // Against the same number of plain references on the same machine, not a fixed time: a busy
+      // CI runner is several times slower across the board. Decoding every reference made these
+      // about 40 times slower than plain ones.
+      const time = (doc) => {
         const started = performance.now();
         extractBodyFromMsg({ bodyStructure: structure, bodyParts: new Map([['1', Buffer.from(doc)]]) });
-        expect(performance.now() - started).toBeLessThan(1000);
+        return performance.now() - started;
+      };
+      const plain = time('<img src="cid:zz@x">'.repeat(80_000));
+      for (const doc of ['<img src="cid:%E0%A4%A">'.repeat(80_000), Array.from({ length: 80_000 }, (_, i) => `<img src="cid:%E0%A4%41${i}">`).join('')]) {
+        expect(time(doc)).toBeLessThan(plain * 8 + 100);
       }
     });
 
