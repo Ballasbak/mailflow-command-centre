@@ -31,14 +31,20 @@ export async function attentionTriageTick({ account } = {}, {
     // A plugin switched off between its timer gate and claim must not run AI.
     // Its lease will naturally expire; the queue is persisted.
     if (!await enabled({ account })) return;
-    const outcome = Number(job.attempts) > MAX_AI_ATTEMPTS
-      ? { ok: false, reason: 'worker_error' } // never exceed retry budget after a crash
-      : await classify({
-        userId: account.user_id,
-        from: [job.from_name, job.from_email].filter(Boolean).join(' '),
-        subject: job.subject || '',
-        body: job.content || '',
-      });
+    let outcome = { ok: false, reason: 'worker_error' };
+    if (Number(job.attempts) <= MAX_AI_ATTEMPTS) {
+      try {
+        outcome = await classify({
+          userId: account.user_id,
+          from: [job.from_name, job.from_email].filter(Boolean).join(' '),
+          subject: job.subject || '',
+          body: job.content || '',
+        });
+      } catch {
+        // Unexpected AI adapter errors retry using the same lease; never call
+        // email actions or convert a failure into ATTENTION: NO.
+      }
+    }
     const applied = await settle({
       accountId: account.id, pluginId: PLUGIN_ID,
       messageId: job.id, leaseId: job.leaseId,
