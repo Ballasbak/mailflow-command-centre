@@ -19,11 +19,21 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
 - Treat message bodies as untrusted text and parse/validate all AI output.
 - No mailboxes, secrets, tokens, local volumes or user emails committed to GitHub.
 
+## Phase 2A — permission-checked classifier bridge (implemented, tests pending)
+
+- Scoped AI provider bridge in `backend/src/services/pluginAi.js`, exposed through the
+  reviewed plugin capability surface; requires current per-user AI permission and
+  summarization feature enabled for each request.
+- Bounded system/user prompts and response size; no raw provider access, keys or tokens
+  exposed to the plugin.
+- `classifyAttentionEmail()` orchestrates classification without reading or mutating mail.
+  Provider failures, access denial and invalid JSON return explicit failed results —
+  **never** `ATTENTION: NO`.
+- Targeted offline unit tests added for access, failures, shape and safety.
+
 ## Next development slices (not yet implemented)
 
-1. Add a **scoped** AI-provider capability, using MailFlow's existing provider and
-   per-user AI permission checks. Avoid raw provider or credential access in the plugin.
-2. Add opt-in account-level ingestion and a bounded, recoverable triage queue.
+1. Add opt-in account-level ingestion and a bounded, recoverable triage queue.
    Store results in the existing `messages.plugin_annotations['attention-triage']`.
    Deduplicate and retry failures; never silently treat failed AI as unimportant.
 3. Add a read-only API and a `Needs Attention` dashboard view; statuses:
@@ -51,5 +61,5 @@ When dependencies are installed in the development checkout:
 cd C:\Users\fnico\Projects\mailflow-command-centre\backend
 npm ci
 npm run lint:plugins
-npm test -- src/plugins/attention-triage/policy.test.js
+npm test -- src/plugins/attention-triage/policy.test.js src/plugins/attention-triage/classify.test.js src/services/pluginAi.test.js src/plugins/loadPlugins.test.js
 ```
