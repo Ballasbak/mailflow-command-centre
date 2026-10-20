@@ -17,4 +17,14 @@ describe('loadBundledPlugins', () => {
     expect(gtd.router.base).toBe('/api/gtd');
     expect(typeof gtd.router.handler).toBe('function');
   });
+
+  it('registers Attention Triage inertly in development', () => {
+    const r = createPluginRegistry();
+    loadBundledPlugins(r);
+    const plugin = r.get('attention-triage');
+    expect(plugin?.tier).toBe(1);
+    expect(plugin?.version).toBe('0.1.0');
+    expect(plugin?.hooks).toBeUndefined();
+    expect(plugin?.router).toBeUndefined();
+  });
 });
