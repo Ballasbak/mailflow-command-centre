@@ -59,6 +59,20 @@ describe('new-mail plugin queue', () => {
     expect(query).not.toHaveBeenCalled();
   });
 
+  it('requires the full five-section UUID format (8-4-4-4-12)', async () => {
+    // Regression for the missing fourth UUID segment: a shortened format used
+    // to match the implementation regex and made every valid account id fail.
+    await expect(enqueuePluginMessageIds({
+      accountId: '11111111-1111-4111-111111111111',
+      pluginId: 'attention-triage', messageIds: [FIRST],
+    })).rejects.toThrow(/account/);
+    await expect(enqueuePluginMessageIds({
+      accountId: ACCOUNT, pluginId: 'attention-triage',
+      messageIds: ['22222222-2222-4222-222222222222'],
+    })).rejects.toThrow(/message/);
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it('rejects oversized batches rather than running an unbounded query', async () => {
     const ids = Array.from({ length: 101 }, (_, i) => 'aaaaaaaa-aaaa-4aaa-8aaa-' + i.toString(16).padStart(12, '0'));
     await expect(enqueuePluginMessageIds({ accountId: ACCOUNT, pluginId: 'attention-triage', messageIds: ids }))
