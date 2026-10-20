@@ -2,7 +2,7 @@
 // This never changes IMAP flags, folders, message bodies or reading state.
 import { query } from './db.js';
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PLUGIN_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const MAX_BATCH = 100;
 
