@@ -9,7 +9,7 @@ export async function classifyAttentionEmail({ userId, from, subject, body } = {
     return { ok: false, reason: 'missing_owner' };
   }
   const messages = buildAttentionMessages({ from, subject, body });
-  let raw = null;
+  let raw;
   try {
     raw = await complete({ userId, messages });
   } catch {
