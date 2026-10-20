@@ -9,7 +9,7 @@ export const ATTENTION_DECISIONS = Object.freeze(['YES', 'NO', 'REVIEW']);
 
 function clean(value, max) {
   return (typeof value === 'string' ? value : '')
-    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\p{Cc}/gu, ' ')
     .replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
