@@ -47,6 +47,17 @@ describe('Attention Triage inbox ingest', () => {
     });
   });
 
+  it('splits a large arrival into bounded batches', async () => {
+    isPluginActivatedForAccount.mockResolvedValue(true);
+    getAccountConfig.mockResolvedValue({ enabled: true });
+    const ids = Array.from({ length: 205 },
+      (_, i) => 'aaaaaaaa-aaaa-4aaa-8aaa-' + i.toString(16).padStart(12, '0'));
+    await inboxIngest({ account, newInboxIds: ids });
+    expect(enqueuePluginMessageIds).toHaveBeenCalledTimes(3);
+    expect(enqueuePluginMessageIds.mock.calls.map(call => call[0].messageIds.length))
+      .toEqual([100, 100, 5]);
+  });
+
   it('returns without queue work when all arrivals were deleted by inbox rules', async () => {
     isPluginActivatedForAccount.mockResolvedValue(true);
     getAccountConfig.mockResolvedValue({ enabled: true });
