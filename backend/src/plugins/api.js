@@ -57,6 +57,8 @@ export const broadcast = (payload, userId) => getMailEngine().broadcast(payload,
 // provider is off / the summarize feature is disabled / the user's AI access is off; both take
 // the user, and summarizeMessage checks it itself). No access to keys or the provider itself.
 export { summarizeMessage, summarizeAvailable } from '../services/summarize.js';
+// Bounded completion for a plugin-owned AI classification; enforces user AI access.
+export { completePluginAiText } from '../services/pluginAi.js';
 
 // ── Per-plugin storage ────────────────────────────────────────────────────────
 // Generic per-plugin key/value + blob storage (the plugin_data table), owner-scoped and cascade-
