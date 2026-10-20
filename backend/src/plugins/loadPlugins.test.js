@@ -23,8 +23,9 @@ describe('loadBundledPlugins', () => {
     loadBundledPlugins(r);
     const plugin = r.get('attention-triage');
     expect(plugin?.tier).toBe(1);
-    expect(plugin?.version).toBe('0.1.0');
-    expect(plugin?.hooks).toBeUndefined();
+    expect(plugin?.version).toBe('0.2.0');
+    expect(typeof plugin?.hooks?.inboxIngest?.handler).toBe('function');
+    expect(typeof plugin?.hooks?.inboxIngest?.isActive).toBe('function');
     expect(plugin?.router).toBeUndefined();
   });
 });
