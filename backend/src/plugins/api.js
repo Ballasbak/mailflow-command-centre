@@ -59,6 +59,8 @@ export const broadcast = (payload, userId) => getMailEngine().broadcast(payload,
 export { summarizeMessage, summarizeAvailable } from '../services/summarize.js';
 // Bounded completion for a plugin-owned AI classification; enforces user AI access.
 export { completePluginAiText } from '../services/pluginAi.js';
+// Batched, idempotent metadata-only enqueue for a particular account and plugin.
+export { enqueuePluginMessageIds } from '../services/pluginMessageQueue.js';
 
 // ── Per-plugin storage ────────────────────────────────────────────────────────
 // Generic per-plugin key/value + blob storage (the plugin_data table), owner-scoped and cascade-
