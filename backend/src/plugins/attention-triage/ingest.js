@@ -32,13 +32,17 @@ export async function inboxIngest({ account, newInboxIds, deletedIds } = {}) {
   if (!await triageEnabledForAccount({ account })) return;
   const ids = selectAttentionCandidates(newInboxIds, deletedIds);
   if (!ids.length) return;
-  try {
-    await enqueuePluginMessageIds({
-      accountId: account.id, pluginId: PLUGIN_ID, messageIds: ids,
-    });
-  } catch {
-    // Do not disclose sender, subject or body in logs.
-    // A future reconciler must recover unqueued arrivals if persistence fails.
-    logger.warn('Attention triage enqueue failed; recovery not yet enabled');
+  // A high-volume synchronisation can produce more than one bounded DB batch.
+  // Each write remains quick and contains no provider calls.
+  for (let i = 0; i < ids.length; i += 100) {
+    try {
+      await enqueuePluginMessageIds({
+        accountId: account.id, pluginId: PLUGIN_ID, messageIds: ids.slice(i, i + 100),
+      });
+    } catch {
+      // Do not disclose sender, subject or body in logs.
+      // A future reconciler must recover unqueued arrivals if persistence fails.
+      logger.warn('Attention triage enqueue failed; recovery not yet enabled');
+    }
   }
 }
