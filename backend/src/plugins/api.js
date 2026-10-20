@@ -61,6 +61,8 @@ export { summarizeMessage, summarizeAvailable } from '../services/summarize.js';
 export { completePluginAiText } from '../services/pluginAi.js';
 // Batched, idempotent metadata-only enqueue for a particular account and plugin.
 export { enqueuePluginMessageIds } from '../services/pluginMessageQueue.js';
+// Lease-claimed, account-scoped AI queue operations; no raw database handle for plugins.
+export { claimNextPluginMessage, settlePluginMessage } from '../services/pluginMessageWorker.js';
 
 // ── Per-plugin storage ────────────────────────────────────────────────────────
 // Generic per-plugin key/value + blob storage (the plugin_data table), owner-scoped and cascade-
