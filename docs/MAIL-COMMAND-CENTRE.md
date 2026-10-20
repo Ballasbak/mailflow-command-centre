@@ -31,11 +31,27 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
   **never** `ATTENTION: NO`.
 - Targeted offline unit tests added for access, failures, shape and safety.
 
+## Phase 2B1 — incoming-email queue staging (implemented, tests pending)
+
+- When BOTH per-user activation and per-account opt-in are true, MailFlow's existing
+  `inboxIngest` hook sends newly inserted inbox message ids (including already-read
+  arrivals) to a bounded account-scoped database enqueue. Block-list/rule-deleted
+  messages are excluded.
+- Write-once `plugin_annotations['attention-triage'] = { status: 'QUEUED', ... }`:
+  duplicate syncs never erase a classified result or an owner's future decision.
+- The hook makes **no AI calls**, no changes to message read state and no IMAP writes.
+- All activation gates are OFF by default. There is no UI or per-account enable
+  route yet, so users cannot activate processing in this build.
+- **Known incomplete failure mode:** an enqueue database error is logged without
+  changing the user's email, but there is no durable reconciliation scan to
+  re-discover that message yet. Do NOT enable for live use until recovery is built.
+
 ## Next development slices (not yet implemented)
 
-1. Add opt-in account-level ingestion and a bounded, recoverable triage queue.
-   Store results in the existing `messages.plugin_annotations['attention-triage']`.
-   Deduplicate and retry failures; never silently treat failed AI as unimportant.
+1. Finish the bounded, recoverable worker (claim leases, retries, crash recovery,
+   AI classification, classification results) and add account-level activation controls.
+   Persist results in `messages.plugin_annotations['attention-triage']`; avoid overwriting
+   owner acknowledgements or treating AI failures as unimportant.
 3. Add a read-only API and a `Needs Attention` dashboard view; statuses:
    OPEN / REVIEW / RESOLVED / EXPECTED. Keep owner decisions persistent.
 4. Test against synthetic messages and a separate development Docker environment
@@ -61,5 +77,5 @@ When dependencies are installed in the development checkout:
 cd C:\Users\fnico\Projects\mailflow-command-centre\backend
 npm ci
 npm run lint:plugins
-npm test -- src/plugins/attention-triage/policy.test.js src/plugins/attention-triage/classify.test.js src/services/pluginAi.test.js src/plugins/loadPlugins.test.js
+npm test -- src/plugins/attention-triage/policy.test.js src/plugins/attention-triage/classify.test.js src/services/pluginAi.test.js src/services/pluginMessageQueue.test.js src/plugins/attention-triage/ingest.test.js src/plugins/loadPlugins.test.js
 ```
