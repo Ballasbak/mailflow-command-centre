@@ -1,16 +1,23 @@
-// Default OFF, account opt-in (and per-user plugin activation) are both required.
-// Phase 2B1 records new arrivals as QUEUED metadata. NO AI worker is wired yet.
+// Development-only registration. Default OFF: per-user activation and per-account
+// opt-in are BOTH required. The worker is armed only on an eligible IMAP account's
+// connection; reconnect after enabling it. Never runs against the working lab.
 import { inboxIngest, triageEnabledForAccount } from './ingest.js';
+import { attentionTriageTick } from './worker.js';
 
 export const attentionTriagePlugin = {
   id: 'attention-triage',
   name: 'Attention Triage (development)',
-  version: '0.2.0',
+  version: '0.3.0',
   tier: 1,
   hooks: {
     inboxIngest: {
       handler: inboxIngest,
       isActive: triageEnabledForAccount,
     },
+  },
+  sync: {
+    intervalMs: 60000,
+    isActive: triageEnabledForAccount,
+    tick: attentionTriageTick,
   },
 };
