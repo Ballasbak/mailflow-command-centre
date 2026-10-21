@@ -38,48 +38,48 @@ BEGIN
 
   INSERT INTO messages (
     id, account_id, uid, folder, message_id, subject,
-    from_name, from_email, date, snippet, is_read, plugin_annotations
+    from_name, from_email, date, snippet, body_text, is_read, plugin_annotations
   ) VALUES
   (
     'ca11c000-0000-4000-8000-000000000101', demo_account, 101, 'INBOX',
     '<cc-demo-101@example.invalid>', '[DEMO] New Google App Password',
     'Synthetic Security', 'alerts@example.invalid', NOW() - interval '1 hour',
-    'Synthetic security notice for testing Expected.', false,
+    'Synthetic security notice for testing Expected.', 'Synthetic security notice for testing Expected.', false,
     '{"attention-triage":{"status":"DONE","ownerStatus":"OPEN","result":{"version":1,"attention":"YES","priority":"HIGH","category":"SECURITY","why":"A sample account security event needs your confirmation.","action":"Check whether the event was expected.","deadline":"NONE"}}}'::jsonb
   ),
   (
     'ca11c000-0000-4000-8000-000000000102', demo_account, 102, 'INBOX',
     '<cc-demo-102@example.invalid>', '[DEMO] Customer repair booking enquiry',
     'Synthetic Customer', 'customer@example.invalid', NOW() - interval '2 hours',
-    'Synthetic customer question for testing Resolved.', false,
+    'Synthetic customer question for testing Resolved.', 'Synthetic customer question for testing Resolved.', false,
     '{"attention-triage":{"status":"DONE","ownerStatus":"OPEN","result":{"version":1,"attention":"YES","priority":"HIGH","category":"CUSTOMER","why":"A prospective customer asks for a repair appointment.","action":"Reply with repair availability.","deadline":"NONE"}}}'::jsonb
   ),
   (
     'ca11c000-0000-4000-8000-000000000103', demo_account, 103, 'INBOX',
     '<cc-demo-103@example.invalid>', '[DEMO] Payment statement needs review',
     'Synthetic Payments', 'accounts@example.invalid', NOW() - interval '3 hours',
-    'Synthetic finance message.', false,
+    'Synthetic finance message.', 'Synthetic finance message.', false,
     '{"attention-triage":{"status":"DONE","ownerStatus":"OPEN","result":{"version":1,"attention":"YES","priority":"MEDIUM","category":"MONEY","why":"A synthetic payment difference requires checking.","action":"Compare the statement with your records.","deadline":"NONE"}}}'::jsonb
   ),
   (
     'ca11c000-0000-4000-8000-000000000104', demo_account, 104, 'INBOX',
     '<cc-demo-104@example.invalid>', '[DEMO] Classification unavailable',
     'Synthetic Queue', 'queue@example.invalid', NOW() - interval '4 hours',
-    'Synthetic failed-AI job for manual review.', false,
+    'Synthetic failed-AI job for manual review.', 'Synthetic failed-AI job for manual review.', false,
     '{"attention-triage":{"status":"NEEDS_REVIEW","ownerStatus":"OPEN","lastError":"ai_unavailable","attempts":3,"version":1}}'::jsonb
   ),
   (
     'ca11c000-0000-4000-8000-000000000105', demo_account, 105, 'INBOX',
     '<cc-demo-105@example.invalid>', '[DEMO] Routine weekly newsletter',
     'Synthetic Newsletter', 'news@example.invalid', NOW() - interval '5 hours',
-    'This noise message must not appear in Needs Attention.', false,
+    'This noise message must not appear in Needs Attention.', 'This noise message must not appear in Needs Attention.', false,
     '{"attention-triage":{"status":"DONE","ownerStatus":"OPEN","result":{"version":1,"attention":"NO","priority":"NONE","category":"NOISE","why":"Routine newsletter.","action":"NONE","deadline":"NONE"}}}'::jsonb
   ),
   (
     'ca11c000-0000-4000-8000-000000000106', demo_account, 106, 'INBOX',
     '<cc-demo-106@example.invalid>', '[DEMO] Already acknowledged security alert',
     'Synthetic Security', 'previous@example.invalid', NOW() - interval '6 hours',
-    'Previously expected; must not appear in attention feed.', false,
+    'Previously expected; must not appear in attention feed.', 'Previously expected; must not appear in attention feed.', false,
     '{"attention-triage":{"status":"DONE","ownerStatus":"EXPECTED","result":{"version":1,"attention":"YES","priority":"HIGH","category":"SECURITY","why":"Test alert.","action":"Check if expected.","deadline":"NONE"}}}'::jsonb
   )
   ON CONFLICT (id) DO NOTHING;
