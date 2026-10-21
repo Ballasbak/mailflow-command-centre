@@ -3,10 +3,11 @@ import { api } from '../../utils/api.js';
 import { useStore } from '../../store/index.js';
 import { openDeepLinkMessage } from '../../utils/gtd.js';
 import {
-  ATTENTION_FILTERS, attentionCounts, attentionStateLabel, visibleAttentionItems,
+  ATTENTION_FILTERS, attentionCounts, attentionStateLabel, canAcknowledgeAttentionItem, visibleAttentionItems,
 } from './attentionView.js';
 
-// Read-only action list: server handles authorization; email bodies are not exposed.
+// Safe action list: explicit owner acknowledgements only update plugin metadata.
+// Server handles authorization; email bodies and mailbox flags are not exposed.
 const surface = {
   background: 'var(--bg-secondary)',
   border: '1px solid var(--border)',
@@ -46,6 +47,8 @@ export default function AttentionDashboard({ onClose }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [openingId, setOpeningId] = useState(null);
+  const [acknowledgingId, setAcknowledgingId] = useState(null);
+  const [lastAck, setLastAck] = useState(null);
 
   useEffect(() => {
     focusRef.current?.focus();
@@ -112,6 +115,41 @@ export default function AttentionDashboard({ onClose }) {
     }
   };
 
+  // No optimistic dismissal until the server confirms the owner's action.
+  const acknowledge = async (item, status) => {
+    if (acknowledgingId || openingId || !canAcknowledgeAttentionItem(item)) return;
+    setAcknowledgingId(item.id);
+    try {
+      await api.patch('/attention/items/' + encodeURIComponent(item.id) + '/status', { status });
+      setResponse(prev => ({
+        ...prev, items: prev.items.filter(existing => existing.id !== item.id),
+      }));
+      setLastAck({ item, previousStatus: item.ownerStatus || 'OPEN', status });
+      setError('');
+    } catch {
+      setError('The acknowledgement could not be saved. Please try again.');
+    } finally {
+      setAcknowledgingId(null);
+    }
+  };
+
+  const undoAcknowledgement = async () => {
+    if (!lastAck || acknowledgingId) return;
+    const { item, previousStatus } = lastAck;
+    setAcknowledgingId(item.id);
+    try {
+      await api.patch('/attention/items/' + encodeURIComponent(item.id) + '/status',
+        { status: previousStatus });
+      setLastAck(null);
+      setError('');
+      setRefresh(value => value + 1);
+    } catch {
+      setError('Could not undo the acknowledgement. Please try again.');
+    } finally {
+      setAcknowledgingId(null);
+    }
+  };
+
   const filterLabels = { ALL: 'All', HIGH: 'High priority', REVIEW: 'Needs review' };
   return (
     <div
@@ -149,7 +187,7 @@ export default function AttentionDashboard({ onClose }) {
               Needs Attention
             </h2>
             <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
-              Important email and messages awaiting review · Read-only preview
+              Important email and messages awaiting review · Owner-controlled actions
             </div>
           </div>
           <button type="button" aria-label="Close Needs Attention" onClick={onClose}
@@ -198,6 +236,24 @@ export default function AttentionDashboard({ onClose }) {
             );
           })}
         </div>
+
+        {lastAck && (
+          <div role="status" style={{
+            padding: '9px 20px', display: 'flex', alignItems: 'center',
+            justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+            background: 'var(--bg-tertiary)', color: 'var(--text-secondary)',
+            fontSize: 12, borderBottom: '1px solid var(--border-subtle)',
+          }}>
+            <span>
+              Marked as {lastAck.status === 'EXPECTED' ? 'Expected' : 'Resolved'}.
+              The email itself was not changed.
+            </span>
+            <button type="button" disabled={acknowledgingId !== null}
+              style={buttonBase} onClick={() => { void undoAcknowledgement(); }}>
+              Undo
+            </button>
+          </div>
+        )}
 
         {error && (
           <div role="alert" style={{
@@ -278,9 +334,28 @@ export default function AttentionDashboard({ onClose }) {
                     Deadline: {item.deadline}
                   </div>
                 )}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+                <div style={{
+                  display: 'flex', justifyContent: 'flex-end',
+                  alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 12,
+                }}>
+                  {canAcknowledgeAttentionItem(item) && (
+                    <>
+                      <button type="button" style={buttonBase}
+                        title="I expected this event; no action is needed"
+                        disabled={acknowledgingId !== null || openingId !== null}
+                        onClick={() => { void acknowledge(item, 'EXPECTED'); }}>
+                        {acknowledgingId === item.id ? 'Saving…' : 'Expected'}
+                      </button>
+                      <button type="button" style={buttonBase}
+                        title="I have handled this email"
+                        disabled={acknowledgingId !== null || openingId !== null}
+                        onClick={() => { void acknowledge(item, 'RESOLVED'); }}>
+                        {acknowledgingId === item.id ? 'Saving…' : 'Resolved'}
+                      </button>
+                    </>
+                  )}
                   <button type="button" style={buttonBase}
-                    disabled={openingId !== null}
+                    disabled={openingId !== null || acknowledgingId !== null}
                     onClick={() => { void openMessage(item); }}>
                     {openingId === item.id ? 'Opening…' : 'Open email'}
                   </button>
