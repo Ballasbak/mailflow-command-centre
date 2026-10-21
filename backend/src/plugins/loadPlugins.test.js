@@ -23,7 +23,7 @@ describe('loadBundledPlugins', () => {
     loadBundledPlugins(r);
     const plugin = r.get('attention-triage');
     expect(plugin?.tier).toBe(1);
-    expect(plugin?.version).toBe('0.3.0');
+    expect(plugin?.version).toBe('0.4.0');
     expect(typeof plugin?.hooks?.inboxIngest?.handler).toBe('function');
     expect(typeof plugin?.hooks?.inboxIngest?.isActive).toBe('function');
     expect(plugin?.sync?.intervalMs).toBe(60000);
