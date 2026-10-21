@@ -36,9 +36,17 @@ describe('Attention Triage inbox ingest', () => {
     expect(enqueuePluginMessageIds).not.toHaveBeenCalled();
   });
 
-  it('queues only genuinely new and still-present arrivals (including read arrivals)', async () => {
+  it('blocks automation without a recorded activation baseline', async () => {
     isPluginActivatedForAccount.mockResolvedValue(true);
     getAccountConfig.mockResolvedValue({ enabled: true });
+    expect(await triageEnabledForAccount({ account })).toBe(false);
+    await inboxIngest({ account, newInboxIds: [M1] });
+    expect(enqueuePluginMessageIds).not.toHaveBeenCalled();
+  });
+
+  it('queues only genuinely new and still-present arrivals (including read arrivals)', async () => {
+    isPluginActivatedForAccount.mockResolvedValue(true);
+    getAccountConfig.mockResolvedValue({ enabled: true, activatedAt: '2026-10-20T10:00:00.000Z' });
     await inboxIngest({
       account, newInboxIds: [M1, M2, M1], deletedIds: new Set([M2]),
     });
@@ -49,7 +57,7 @@ describe('Attention Triage inbox ingest', () => {
 
   it('splits a large arrival into bounded batches', async () => {
     isPluginActivatedForAccount.mockResolvedValue(true);
-    getAccountConfig.mockResolvedValue({ enabled: true });
+    getAccountConfig.mockResolvedValue({ enabled: true, activatedAt: '2026-10-20T10:00:00.000Z' });
     const ids = Array.from({ length: 205 },
       (_, i) => 'aaaaaaaa-aaaa-4aaa-8aaa-' + i.toString(16).padStart(12, '0'));
     await inboxIngest({ account, newInboxIds: ids });
@@ -60,7 +68,7 @@ describe('Attention Triage inbox ingest', () => {
 
   it('returns without queue work when all arrivals were deleted by inbox rules', async () => {
     isPluginActivatedForAccount.mockResolvedValue(true);
-    getAccountConfig.mockResolvedValue({ enabled: true });
+    getAccountConfig.mockResolvedValue({ enabled: true, activatedAt: '2026-10-20T10:00:00.000Z' });
     await inboxIngest({ account, newInboxIds: [M2], deletedIds: [M2] });
     expect(enqueuePluginMessageIds).not.toHaveBeenCalled();
   });
@@ -74,7 +82,7 @@ describe('Attention Triage inbox ingest', () => {
 
   it('logs a generic error without accidentally exposing private email content', async () => {
     isPluginActivatedForAccount.mockResolvedValue(true);
-    getAccountConfig.mockResolvedValue({ enabled: true });
+    getAccountConfig.mockResolvedValue({ enabled: true, activatedAt: '2026-10-20T10:00:00.000Z' });
     enqueuePluginMessageIds.mockRejectedValue(new Error('email-body confidential'));
     await inboxIngest({ account, newInboxIds: [M1] });
     expect(logger.warn).toHaveBeenCalledTimes(1);
