@@ -1,7 +1,7 @@
 // Authenticated, read-only Attention Triage API.
 // Frontend clients never access the raw email database or provider credentials.
 import { Router } from 'express';
-import { requireAuth, isPluginActivated, listAttentionItems } from '../api.js';
+import { requireAuth, isPluginActivated, listAttentionItems, isUuid } from '../api.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -15,7 +15,7 @@ router.get('/items', async (req, res) => {
   const limit = rawLimit === undefined ? 30 : Number(rawLimit);
 
   if ((accountId !== null && (
-    typeof accountId !== 'string' || !/^[0-9a-f-]{36}$/i.test(accountId)
+    !isUuid(accountId)
   )) || !Number.isInteger(limit) || limit < 1 || limit > 50) {
     return res.status(400).json({ error: 'Invalid attention feed parameters' });
   }
