@@ -5,6 +5,7 @@ import {
   isPluginActivatedForAccount,
   logger,
 } from '../api.js';
+import { validActivationBaseline } from './baseline.js';
 
 const PLUGIN_ID = 'attention-triage';
 
@@ -20,7 +21,7 @@ export async function triageEnabledForAccount({ account } = {}) {
   try {
     if (!await isPluginActivatedForAccount(PLUGIN_ID, account.id)) return false;
     const config = await getAccountConfig(PLUGIN_ID, account.id);
-    return config?.enabled === true;
+    return config?.enabled === true && validActivationBaseline(config.activatedAt);
   } catch {
     return false;
   }
