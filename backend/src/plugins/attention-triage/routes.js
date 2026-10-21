@@ -1,7 +1,7 @@
 // Authenticated, read-only Attention Triage API.
 // Frontend clients never access the raw email database or provider credentials.
 import { Router } from 'express';
-import { requireAuth, isPluginActivated, listAttentionItems, isUuid } from '../api.js';
+import { requireAuth, isPluginActivated, listAttentionItems, acknowledgeAttentionItem, isUuid } from '../api.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -31,6 +31,29 @@ router.get('/items', async (req, res) => {
     return res.json(feed);
   } catch {
     return res.status(503).json({ error: 'Attention feed is temporarily unavailable' });
+  }
+});
+
+// PATCH /api/attention/items/:id/status { status: 'RESOLVED' | 'EXPECTED' | 'OPEN' }
+// Deliberate owner action only. The global /api middleware checks the
+// X-Requested-With CSRF header for any modifying request.
+router.patch('/items/:id/status', async (req, res) => {
+  const userId = req.session?.userId;
+  const messageId = req.params?.id;
+  const status = req.body?.status;
+  if (!isUuid(messageId) || !['OPEN', 'RESOLVED', 'EXPECTED'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid attention acknowledgement' });
+  }
+  try {
+    if (!await isPluginActivated(userId, 'attention-triage')) {
+      return res.status(403).json({ error: 'Attention Triage is not activated' });
+    }
+    const updated = await acknowledgeAttentionItem({ userId, messageId, status });
+    if (!updated) return res.status(404).json({ error: 'Attention item not found' });
+    res.set('Cache-Control', 'private, no-store');
+    return res.json({ ok: true, id: messageId, ownerStatus: status });
+  } catch {
+    return res.status(503).json({ error: 'Attention acknowledgement is temporarily unavailable' });
   }
 });
 
