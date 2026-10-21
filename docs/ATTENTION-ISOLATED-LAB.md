@@ -81,6 +81,43 @@ It should HIDE the fifth item (newsletter marked NOISE) and the sixth item
 This checks actual PostgreSQL read/acknowledge SQL and dashboard behaviour;
 it does not test real IMAP, AI billing or autonomous mail ingestion.
 
+## Phase D — real PostgreSQL queue/lease rehearsal (synthetic only)
+
+After the dashboard/manual workflow has been verified, the next step tests
+actual backend queue/lease/retry/recovery SQL. It creates three NEW random
+fake message rows, exercises them, and deletes only those same three rows.
+Do not run against your working MailFlow.
+
+Run from the project root, one command at a time:
+
+    git pull --ff-only
+
+Build the development backend image without restarting its running container:
+
+    docker compose -p mailflow-cc-dev --env-file .env.cc-dev -f docker-compose.cc-dev.yml build backend
+
+Run the manually invoked, guarded test in an EPHEMERAL backend container:
+
+    docker compose -p mailflow-cc-dev --env-file .env.cc-dev -f docker-compose.cc-dev.yml run --rm -T --no-deps -e CC_DEV_SQL_TEST=1 backend node src/dev/attentionPostgresCheck.js
+
+The test refuses to run unless every guard passes: expected cc_dev hostname,
+database name, DB role, one throwaway user, exactly one disabled offline
+demo@example.invalid account, no real credentials and no pre-existing queued
+mail. It never imports a provider client, opens SMTP/IMAP or calls paid AI.
+
+The test checks actual SQL, not mocked database calls:
+
+- write-once enqueue; duplicate protection
+- single-message lease, expiry reclaim and rejection of stale completion
+- retry delays and NEEDS_REVIEW after three simulated failures
+- recovery of missing queue annotations with a bounded recent-mail scan
+- synthetic deterministic model output through the local prompt/parser
+- classification projection, Expected/Undo, preservation of is_read
+
+Expected last line: PASS: PostgreSQL queue and deterministic fake-AI rehearsal complete.
+On any failure, stop and send the full error message. The script tries to clean
+up only its own generated fake IDs; no persistent fixture row is changed.
+Do not put any real mailbox credentials into this stack.
 ## Shutdown
 
 Stop ONLY the isolated development stack, keeping its separate database:
