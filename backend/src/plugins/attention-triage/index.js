@@ -7,7 +7,7 @@ import { attentionTriageTick } from './worker.js';
 export const attentionTriagePlugin = {
   id: 'attention-triage',
   name: 'Attention Triage (development)',
-  version: '0.3.0',
+  version: '0.4.0',
   tier: 1,
   hooks: {
     inboxIngest: {
