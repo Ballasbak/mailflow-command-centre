@@ -28,3 +28,13 @@ export function attentionStateLabel(item = {}) {
     default: return 'Review suggested';
   }
 }
+
+
+// Only a completed actionable classification or a permanently failed AI
+// assessment may be acknowledged. Pending and retrying mail should first
+// finish processing (or eventually become NEEDS_REVIEW).
+export function canAcknowledgeAttentionItem(item) {
+  if (!item || typeof item !== 'object') return false;
+  if (item.jobStatus === 'NEEDS_REVIEW' && item.attention === 'REVIEW') return true;
+  return item.jobStatus === 'DONE' && ['YES', 'REVIEW'].includes(item.attention);
+}
