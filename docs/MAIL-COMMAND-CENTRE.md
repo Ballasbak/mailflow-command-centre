@@ -65,7 +65,7 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
 - This is at-least-once AI processing after a crash; duplicate provider calls
   can occur during lease recovery, but the lease prevents stale result writes.
 
-## Phase 2B3 — conservative incoming-email recovery (implemented, tests pending)
+## Phase 2B3 — conservative incoming-email recovery (81 targeted tests passed)
 
 - New messages whose initial queue write failed can be found using
   `messages.synced_at` and the absence of an Attention Triage annotation.
@@ -82,7 +82,7 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
 - A future activation route must record the starting timestamp server-side
   only after verifying an initial mailbox sync.
 
-## Phase 2C1 — owner-scoped dashboard API (implemented, tests pending)
+## Phase 2C1 — owner-scoped dashboard API (96 backend tests passed)
 
 - An authenticated `GET /api/attention/items` endpoint is mounted by the
   bundled plugin at `/api/attention` and requires per-user plugin activation.
@@ -93,9 +93,10 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
 - Hides classified NOISE and owner RESOLVED/EXPECTED records, but includes
   failed, queued, retrying and review-needed messages so failures stay visible.
 - Maximum 50 results per request, read-only, with private/no-store caching.
-- No frontend dashboard or owner acknowledgment controls have been wired yet.
-- Unit tests for the API and reader are pending, as are real PostgreSQL checks.
-## Phase 2C2 — Needs Attention dashboard (implemented, tests pending)
+- The GET feed remains read-only. Owner acknowledgement is a separate PATCH
+  capability (Phase 2C3) that changes only plugin metadata.
+- Unit tests are green; real PostgreSQL tests remain outstanding.
+## Phase 2C2 — Needs Attention dashboard (5 frontend tests, lint, build passed)
 
 - An activated-plugin-only `Needs Attention` nav entry opens its own modal,
   rather than taking over MailFlow's existing GTD right-hand sidebar.
@@ -106,19 +107,34 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
   handling. No automated mark-read, send, move, archive or delete action added.
 - A small generic `sidebar-nav` plugin seam is added to core Sidebar;
   all other UI files are in `frontend/src/plugins/attention-triage/`.
-- The panel is intentionally read-only: acknowledging an alert as EXPECTED
-  or RESOLVED requires a separate owner-authorised endpoint.
-- The new frontend selector unit tests and production build are not yet verified.
+- The dashboard was read-only until Phase 2C3 introduced controlled owner
+  acknowledgements. No message read/move/delete flags are changed.
+- The frontend selector unit tests, lint and Vite build have passed.
+## Phase 2C3 — explicit Expected / Resolved controls (implemented, tests pending)
+
+- `PATCH /api/attention/items/:id/status` accepts only `OPEN`, `EXPECTED`
+  and `RESOLVED` from the signed-in, activated plugin owner.
+- The SQL joins the message account to the signed-in user and updates only
+  `messages.plugin_annotations['attention-triage']`, preserving the classifier
+  result, email content and flags. Non-actionable, deleted or other-owner
+  messages are indistinguishable and are not modified.
+- A successful action records the last status, the server timestamp and the
+  acting user ID. Full append-only audit history is not implemented yet.
+- The dashboard removes items only after a successful server response;
+  failed saves remain visible with an error. Undo reopens the item.
+- Action buttons appear only for completed classifications or `NEEDS_REVIEW`
+  items, not for queued/processing/retrying messages.
+- The new backend and frontend tests, along with frontend production build,
+  must pass before this milestone is closed.
 ## Next development slices (not yet implemented)
 
 1. Resolve moved-by-rule and old-dated recovery gaps without bulk
    classifying the historical mailbox.
 2. Add authenticated per-account opt-in capturing the baseline server-side
    and a reliable immediate disable mechanism.
-3. Add narrowly scoped, owner-only RESOLVED / EXPECTED acknowledgement
-   writes and update the dashboard with real acknowledgement controls.
-4. Test SQL against real isolated PostgreSQL and a separate Docker dev
-   instance, without reusing lab volumes, credentials or ports.
+3. Test the new acknowledgement flow, then run end-to-end SQL checks
+   against isolated PostgreSQL and a separate Docker development instance.
+4. Add a durable per-action audit log before unattended live use.
 5. Activate one mailbox only after owner approval, then expand carefully.
 ### Frontend checks (Node 22, isolated environment)
 
@@ -150,5 +166,5 @@ When dependencies are installed in the development checkout:
 cd C:\Users\fnico\Projects\mailflow-command-centre\backend
 npm ci
 npm run lint:plugins
-npm test -- src/plugins/attention-triage/policy.test.js src/plugins/attention-triage/classify.test.js src/services/pluginAi.test.js src/services/pluginMessageQueue.test.js src/services/pluginMessageRecovery.test.js src/services/pluginMessageWorker.test.js src/services/attentionRead.test.js src/plugins/attention-triage/ingest.test.js src/plugins/attention-triage/baseline.test.js src/plugins/attention-triage/reconcile.test.js src/plugins/attention-triage/routes.test.js src/plugins/attention-triage/worker.test.js src/plugins/loadPlugins.test.js
+npm test -- src/plugins/attention-triage/policy.test.js src/plugins/attention-triage/classify.test.js src/services/pluginAi.test.js src/services/pluginMessageQueue.test.js src/services/pluginMessageRecovery.test.js src/services/pluginMessageWorker.test.js src/services/attentionRead.test.js src/services/attentionAcknowledge.test.js src/plugins/attention-triage/ingest.test.js src/plugins/attention-triage/baseline.test.js src/plugins/attention-triage/reconcile.test.js src/plugins/attention-triage/routes.test.js src/plugins/attention-triage/worker.test.js src/plugins/loadPlugins.test.js
 ```
