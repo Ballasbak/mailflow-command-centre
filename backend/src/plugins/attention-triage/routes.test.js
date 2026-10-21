@@ -4,8 +4,8 @@ vi.mock('../api.js', () => ({
   requireAuth: (req, res, next) => next(),
   isPluginActivated: vi.fn(),
   listAttentionItems: vi.fn(),
-  isUuid: vi.fn((value) => typeof value === 'string' &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)),
+  isUuid: (value) => typeof value === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value),
 }));
 
 import router from './routes.js';
