@@ -2,9 +2,8 @@
 // Narrow core capability: account-scoped, bounded, atomic writes in a single namespace.
 // Does not inspect bodies or change IMAP flags, folders, read state or message content.
 import { query } from './db.js';
+import { isUuid, isPluginId } from './pluginMessageIdentifiers.js';
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const PLUGIN_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const MAX_RECOVERY_BATCH = 25;
 const MAX_HEADER_SKEW_DAYS = 7;
 
@@ -39,8 +38,8 @@ const RECOVER_SQL = [
 export async function recoverMissingPluginMessages({
   accountId, pluginId, activatedAt, now = new Date(), limit = MAX_RECOVERY_BATCH,
 } = {}) {
-  if (!UUID_RE.test(accountId || '')) throw new TypeError('Invalid account id');
-  if (!PLUGIN_RE.test(pluginId || '')) throw new TypeError('Invalid plugin id');
+  if (!isUuid(accountId)) throw new TypeError('Invalid account id');
+  if (!isPluginId(pluginId)) throw new TypeError('Invalid plugin id');
   if (!(now instanceof Date) || Number.isNaN(now.getTime())) throw new TypeError('Invalid current time');
   const start = typeof activatedAt === 'string' ? new Date(activatedAt) : activatedAt;
   if (!(start instanceof Date) || Number.isNaN(start.getTime()) || start > now) {
