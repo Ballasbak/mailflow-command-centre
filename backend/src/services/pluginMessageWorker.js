@@ -2,15 +2,14 @@
 // SQL operations only touch our plugin's JSONB namespace; never IMAP flags/mail content.
 import { randomUUID } from 'node:crypto';
 import { query } from './db.js';
+import { isUuid, isPluginId } from './pluginMessageIdentifiers.js';
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const PLUGIN_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const LEASE_MS = 10 * 60 * 1000;
 const MAX_ATTEMPTS = 3;
 
 function validIds(accountId, pluginId) {
-  if (typeof accountId !== 'string' || !UUID_RE.test(accountId)) throw new TypeError('Invalid account id');
-  if (typeof pluginId !== 'string' || !PLUGIN_RE.test(pluginId)) throw new TypeError('Invalid plugin id');
+  if (!isUuid(accountId)) throw new TypeError('Invalid account id');
+  if (!isPluginId(pluginId)) throw new TypeError('Invalid plugin id');
 }
 function validDate(date) {
   if (!(date instanceof Date) || !Number.isFinite(date.getTime())) throw new TypeError('Invalid date');
@@ -53,7 +52,7 @@ export async function claimNextPluginMessage({
 } = {}) {
   validIds(accountId, pluginId);
   validDate(now);
-  if (!UUID_RE.test(leaseId)) throw new TypeError('Invalid lease id');
+  if (!isUuid(leaseId)) throw new TypeError('Invalid lease id');
   if (!Number.isInteger(leaseMs) || leaseMs < 60000 || leaseMs > 3600000) {
     throw new RangeError('Invalid lease duration');
   }
@@ -107,8 +106,8 @@ export async function settlePluginMessage({
   accountId, pluginId, messageId, leaseId, attempts, outcome, now = new Date(),
 } = {}) {
   validIds(accountId, pluginId);
-  if (!UUID_RE.test(messageId || '')) throw new TypeError('Invalid message id');
-  if (!UUID_RE.test(leaseId || '')) throw new TypeError('Invalid lease id');
+  if (!isUuid(messageId)) throw new TypeError('Invalid message id');
+  if (!isUuid(leaseId)) throw new TypeError('Invalid lease id');
   const patch = buildPluginSettlement({ outcome, attempts, now });
   const { rows } = await query(SETTLE_SQL, [
     accountId, pluginId, messageId, leaseId, JSON.stringify(patch),
