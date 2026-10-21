@@ -7,6 +7,7 @@ vi.mock('../api.js', () => ({
 }));
 vi.mock('./classify.js', () => ({ classifyAttentionEmail: vi.fn() }));
 vi.mock('./ingest.js', () => ({ triageEnabledForAccount: vi.fn() }));
+vi.mock('./reconcile.js', () => ({ reconcileUnqueuedInbox: vi.fn() }));
 import { attentionTriageTick } from './worker.js';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -22,6 +23,7 @@ const result = {
 function deps() {
   return {
     enabled: vi.fn().mockResolvedValue(true),
+    reconcile: vi.fn().mockResolvedValue([]),
     claim: vi.fn().mockResolvedValue({
       id: MSG, leaseId: LEASE, attempts: 1,
       from_name: 'Google', from_email: 'security@example.test',
@@ -37,8 +39,10 @@ describe('background Attention Triage tick', () => {
   it('claims and settles one message without touching its read state', async () => {
     const d = deps();
     await attentionTriageTick({ account }, d);
+    expect(d.reconcile).toHaveBeenCalledWith({ account });
     expect(d.claim).toHaveBeenCalledOnce();
     expect(d.claim).toHaveBeenCalledWith({ accountId: A, pluginId: 'attention-triage' });
+    expect(d.reconcile.mock.invocationCallOrder[0]).toBeLessThan(d.claim.mock.invocationCallOrder[0]);
     expect(d.classify).toHaveBeenCalledWith({
       userId: USER, from: 'Google security@example.test',
       subject: 'Alert', body: 'New password.',
@@ -54,17 +58,37 @@ describe('background Attention Triage tick', () => {
     const d = deps();
     d.enabled.mockResolvedValue(false);
     await attentionTriageTick({ account }, d);
+    expect(d.reconcile).not.toHaveBeenCalled();
     expect(d.claim).not.toHaveBeenCalled();
     expect(d.classify).not.toHaveBeenCalled();
   });
 
   it('does not call AI after the account is disabled between claim and processing', async () => {
     const d = deps();
-    d.enabled.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    d.enabled.mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     await attentionTriageTick({ account }, d);
     expect(d.claim).toHaveBeenCalledOnce();
     expect(d.classify).not.toHaveBeenCalled();
     expect(d.settle).not.toHaveBeenCalled();
+  });
+
+  it('halts before claiming if the account is disabled during reconciliation', async () => {
+    const d = deps();
+    d.enabled.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    await attentionTriageTick({ account }, d);
+    expect(d.reconcile).toHaveBeenCalledOnce();
+    expect(d.claim).not.toHaveBeenCalled();
+    expect(d.classify).not.toHaveBeenCalled();
+  });
+
+  it('processes already-queued work after a reconciliation database error', async () => {
+    const d = deps();
+    d.reconcile.mockRejectedValue(new Error('private sender included here'));
+    await attentionTriageTick({ account }, d);
+    expect(d.claim).toHaveBeenCalledOnce();
+    expect(d.settle).toHaveBeenCalledOnce();
+    expect(d.warn).toHaveBeenCalledTimes(1);
+    expect(d.warn.mock.calls[0][0]).not.toContain('private sender');
   });
 
   it('does nothing when the queue is empty', async () => {
