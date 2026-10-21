@@ -141,6 +141,21 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
 - Full instructions: docs/ATTENTION-ISOLATED-LAB.md.
 - The owner has NOT yet started this new development instance. No live MailFlow
   database, image, SMTP/IMAP setting or container has been touched.
+## Phase 2E — isolated real-PostgreSQL queue rehearsal (prepared, not executed)
+
+- The synthetic dashboard/acknowledgement/Open Email exercise has passed.
+  Opening the fictional customer email left is_read=false, ownerStatus=OPEN.
+- A manually invoked guarded test is in
+  backend/src/dev/attentionPostgresCheck.js. It checks actual enqueue, claim,
+  lease recovery, retry, review, missing-annotation recovery, owner feed and
+  acknowledgement/Undo SQL with three temporary fake rows.
+- It rejects any database other than cc_dev, any live mailbox/credential,
+  multiple development users, or missing explicit CC_DEV_SQL_TEST=1 opt-in.
+- It does not call an AI provider or connect IMAP/SMTP. Fake model output
+  exercises the strict local attention parser only.
+- This is not a full real-AI end-to-end integration test. The integration
+  rehearsal has not yet run; do not count it as passed until owner output.
+- Runbook: docs/ATTENTION-ISOLATED-LAB.md (Phase D).
 ## Next development slices (not yet implemented)
 
 1. Resolve moved-by-rule and old-dated recovery gaps without bulk
