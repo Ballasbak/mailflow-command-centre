@@ -45,6 +45,8 @@ export default function AttentionDashboard({ onClose }) {
   const [refresh, setRefresh] = useState(0);
   const [response, setResponse] = useState({ items: [], hasMore: false });
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
   const [error, setError] = useState('');
   const [openingId, setOpeningId] = useState(null);
   const [acknowledgingId, setAcknowledgingId] = useState(null);
@@ -64,8 +66,15 @@ export default function AttentionDashboard({ onClose }) {
 
   useEffect(() => {
     let mounted = true;
+    let inFlight = false;
     const reload = async (foreground = false) => {
-      if (foreground) setLoading(true);
+      // Avoid overlapping timer/manual refreshes and stale UI updates.
+      if (inFlight) return;
+      inFlight = true;
+      if (foreground) {
+        setLoading(true);
+        setRefreshing(true);
+      }
       try {
         const scope = accountId ? '&accountId=' + encodeURIComponent(accountId) : '';
         const data = await api.get('/attention/items?limit=50' + scope);
@@ -74,11 +83,17 @@ export default function AttentionDashboard({ onClose }) {
           items: Array.isArray(data?.items) ? data.items : [],
           hasMore: data?.hasMore === true,
         });
+        // Report a *successful server response*, not a click or guessed result.
+        setLastUpdatedAt(new Date());
         setError('');
       } catch {
         if (mounted) setError('Could not load the attention list. Please try refreshing.');
       } finally {
-        if (mounted) setLoading(false);
+        inFlight = false;
+        if (mounted) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     };
     void reload(true);
@@ -212,9 +227,26 @@ export default function AttentionDashboard({ onClose }) {
             ))}
           </select>
           <button type="button" style={buttonBase}
-            aria-label="Refresh attention list" onClick={() => setRefresh(v => v + 1)}>
-            Refresh
+            aria-label="Refresh attention list"
+            disabled={refreshing}
+            aria-busy={refreshing}
+            onClick={() => {
+              setRefreshing(true);
+              setLastUpdatedAt(null);
+              setRefresh(value => value + 1);
+            }}>
+            {refreshing ? 'Refreshing…' : 'Refresh'}
           </button>
+          <span role="status" aria-live="polite" style={{
+            fontSize: 11, color: 'var(--text-secondary)',
+            whiteSpace: 'nowrap', minWidth: 0,
+          }}>
+            {refreshing ? 'Checking for updates…' : !error && lastUpdatedAt
+              ? 'Updated at ' + lastUpdatedAt.toLocaleTimeString(undefined, {
+                hour: '2-digit', minute: '2-digit', second: '2-digit',
+              })
+              : ''}
+          </span>
         </div>
 
         <div style={{ padding: '11px 20px 10px', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
