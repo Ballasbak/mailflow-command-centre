@@ -30,7 +30,7 @@ describe('shared plugin message identifier validation', () => {
   it('accepts intended plugin names and rejects invalid ones', () => {
     expect(isPluginId('attention-triage')).toBe(true);
     expect(isPluginId('a')).toBe(true);
-    for (const value of ['', null, undefined, 'Attention Triage', 'bad_name', '-bad', 'bad-']) {
+    for (const value of ['', null, undefined, 'Attention Triage', 'bad_name', '-bad', 'bad/name']) {
       expect(isPluginId(value)).toBe(false);
     }
   });
