@@ -95,17 +95,43 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
 - Maximum 50 results per request, read-only, with private/no-store caching.
 - No frontend dashboard or owner acknowledgment controls have been wired yet.
 - Unit tests for the API and reader are pending, as are real PostgreSQL checks.
+## Phase 2C2 — Needs Attention dashboard (implemented, tests pending)
+
+- An activated-plugin-only `Needs Attention` nav entry opens its own modal,
+  rather than taking over MailFlow's existing GTD right-hand sidebar.
+- Uses `GET /api/attention/items` to show HIGH / REVIEW / All views with
+  per-mailbox filtering, timestamps, sender, reason and suggested action.
+- Supports a manual refresh and refreshes only while the dashboard is open.
+- `Open email` uses MailFlow's existing authenticated message/reading-pane
+  handling. No automated mark-read, send, move, archive or delete action added.
+- A small generic `sidebar-nav` plugin seam is added to core Sidebar;
+  all other UI files are in `frontend/src/plugins/attention-triage/`.
+- The panel is intentionally read-only: acknowledging an alert as EXPECTED
+  or RESOLVED requires a separate owner-authorised endpoint.
+- The new frontend selector unit tests and production build are not yet verified.
 ## Next development slices (not yet implemented)
 
 1. Resolve moved-by-rule and old-dated recovery gaps without bulk
    classifying the historical mailbox.
 2. Add authenticated per-account opt-in capturing the baseline server-side
    and a reliable immediate disable mechanism.
-3. Build the Needs Attention dashboard and owner-controlled
-   RESOLVED / EXPECTED acknowledgements against this read-only API.
+3. Add narrowly scoped, owner-only RESOLVED / EXPECTED acknowledgement
+   writes and update the dashboard with real acknowledgement controls.
 4. Test SQL against real isolated PostgreSQL and a separate Docker dev
    instance, without reusing lab volumes, credentials or ports.
 5. Activate one mailbox only after owner approval, then expand carefully.
+### Frontend checks (Node 22, isolated environment)
+
+```powershell
+cd C:\Users\fnico\Projects\mailflow-command-centre\frontend
+npm ci
+npm run lint
+npm test -- src/plugins/attention-triage/attentionView.test.js
+npm run build
+```
+
+These commands belong in an isolated Node 22 development container, not the
+working MailFlow lab. Nothing should deploy or reuse live credentials.
 ## Safety rules
 
 - Never send, reply, delete, mark read, move, archive, or unsubscribe automatically.
