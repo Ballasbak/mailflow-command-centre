@@ -82,14 +82,27 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
 - A future activation route must record the starting timestamp server-side
   only after verifying an initial mailbox sync.
 
+## Phase 2C1 — owner-scoped dashboard API (implemented, tests pending)
+
+- An authenticated `GET /api/attention/items` endpoint is mounted by the
+  bundled plugin at `/api/attention` and requires per-user plugin activation.
+- Queries join `messages` to `email_accounts` and always filter by the signed-in
+  user's ID; optional mailbox selection cannot reveal other users' mail.
+- Returns only minimal sender, subject, time, priority, reason, recommended
+  action and deadline. Email body/HTML, raw annotations and secrets are excluded.
+- Hides classified NOISE and owner RESOLVED/EXPECTED records, but includes
+  failed, queued, retrying and review-needed messages so failures stay visible.
+- Maximum 50 results per request, read-only, with private/no-store caching.
+- No frontend dashboard or owner acknowledgment controls have been wired yet.
+- Unit tests for the API and reader are pending, as are real PostgreSQL checks.
 ## Next development slices (not yet implemented)
 
 1. Resolve moved-by-rule and old-dated recovery gaps without bulk
    classifying the historical mailbox.
 2. Add authenticated per-account opt-in capturing the baseline server-side
    and a reliable immediate disable mechanism.
-3. Add owner-scoped read-only APIs and a Needs Attention dashboard with
-   OPEN / REVIEW / RESOLVED / EXPECTED acknowledgements.
+3. Build the Needs Attention dashboard and owner-controlled
+   RESOLVED / EXPECTED acknowledgements against this read-only API.
 4. Test SQL against real isolated PostgreSQL and a separate Docker dev
    instance, without reusing lab volumes, credentials or ports.
 5. Activate one mailbox only after owner approval, then expand carefully.
@@ -111,5 +124,5 @@ When dependencies are installed in the development checkout:
 cd C:\Users\fnico\Projects\mailflow-command-centre\backend
 npm ci
 npm run lint:plugins
-npm test -- src/plugins/attention-triage/policy.test.js src/plugins/attention-triage/classify.test.js src/services/pluginAi.test.js src/services/pluginMessageQueue.test.js src/services/pluginMessageRecovery.test.js src/services/pluginMessageWorker.test.js src/plugins/attention-triage/ingest.test.js src/plugins/attention-triage/baseline.test.js src/plugins/attention-triage/reconcile.test.js src/plugins/attention-triage/worker.test.js src/plugins/loadPlugins.test.js
+npm test -- src/plugins/attention-triage/policy.test.js src/plugins/attention-triage/classify.test.js src/services/pluginAi.test.js src/services/pluginMessageQueue.test.js src/services/pluginMessageRecovery.test.js src/services/pluginMessageWorker.test.js src/services/attentionRead.test.js src/plugins/attention-triage/ingest.test.js src/plugins/attention-triage/baseline.test.js src/plugins/attention-triage/reconcile.test.js src/plugins/attention-triage/routes.test.js src/plugins/attention-triage/worker.test.js src/plugins/loadPlugins.test.js
 ```
