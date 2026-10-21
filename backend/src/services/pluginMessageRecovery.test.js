@@ -67,6 +67,13 @@ describe('Attention Triage inbox reconciliation', () => {
     expect(query).not.toHaveBeenCalled();
   });
 
+  it('rejects the old four-section UUID format instead of silently accepting it', async () => {
+    await expect(recoverMissingPluginMessages({
+      ...valid, accountId: '11111111-1111-4111-111111111111',
+    })).rejects.toThrow(/account/);
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it('rejects invalid user-controlled identifiers before the SQL query', async () => {
     await expect(recoverMissingPluginMessages({ ...valid, accountId: 'invalid' }))
       .rejects.toThrow(/account/);
