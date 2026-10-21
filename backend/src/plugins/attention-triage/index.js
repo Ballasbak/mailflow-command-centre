@@ -3,12 +3,14 @@
 // connection; reconnect after enabling it. Never runs against the working lab.
 import { inboxIngest, triageEnabledForAccount } from './ingest.js';
 import { attentionTriageTick } from './worker.js';
+import attentionRoutes from './routes.js';
 
 export const attentionTriagePlugin = {
   id: 'attention-triage',
   name: 'Attention Triage (development)',
-  version: '0.4.0',
+  version: '0.5.0',
   tier: 1,
+  router: { base: '/api/attention', handler: attentionRoutes },
   hooks: {
     inboxIngest: {
       handler: inboxIngest,
