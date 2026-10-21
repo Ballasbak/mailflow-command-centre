@@ -1,0 +1,100 @@
+# Mail Command Centre — isolated local development lab
+
+Source: Ballasbak/mailflow-command-centre (feature/attention-triage).
+
+This is NOT the working MailFlow lab. The development stack has:
+- Its own project, containers, database, private named volume and Redis.
+- Browser-only access on http://127.0.0.1:8081.
+- No published PostgreSQL, Redis or backend API ports.
+- A different hostname from the working http://localhost:8080 to separate
+  browser cookies and localStorage (browser cookies are not port-scoped).
+- Synthetic test emails ONLY; no real mailbox, shared secrets or IMAP connection.
+- Backend/frontend images built from this fork, not pre-built lab images.
+
+## Phase A — preflight (no containers started)
+
+In PowerShell, in C:\Users\fnico\Projects\mailflow-command-centre:
+
+1. Update the feature branch:
+
+       git pull --ff-only
+
+2. Generate private random development secrets locally:
+
+       node scripts/prepare-attention-dev.mjs
+
+   This creates .env.cc-dev only once, without printing any secret. This file
+   is ignored by Git and Docker build context. Never share or commit it.
+
+3. Validate the Compose service names (does not expose credentials):
+
+       docker compose -p mailflow-cc-dev --env-file .env.cc-dev -f docker-compose.cc-dev.yml config --services
+
+   Expect the four services frontend, backend, postgres and redis (order
+   may vary). Stop and report an error rather than continuing.
+
+## Phase B — start the isolated stack
+
+After preflight, in the SAME source directory:
+
+    docker compose -p mailflow-cc-dev --env-file .env.cc-dev -f docker-compose.cc-dev.yml up -d --build
+
+First build may take several minutes. Check:
+
+    docker compose -p mailflow-cc-dev --env-file .env.cc-dev -f docker-compose.cc-dev.yml ps
+
+All services should be running/healthy. If backend is unhealthy, use:
+
+    docker compose -p mailflow-cc-dev --env-file .env.cc-dev -f docker-compose.cc-dev.yml logs --tail 80 backend
+
+Browse http://127.0.0.1:8081 (NOT localhost:8081).
+Register exactly one throwaway development administrator with a distinct
+password. Do NOT connect Gmail, Workspace, Yahoo or import the working
+MailFlow lab's data or backups.
+
+## Phase C — synthetic dashboard exercise
+
+After registering the dev administrator, from the project root run this
+single PowerShell pipeline:
+
+    Get-Content -Raw .\scripts\seed-attention-dev.sql | docker compose -p mailflow-cc-dev --env-file .env.cc-dev -f docker-compose.cc-dev.yml exec -T postgres psql -X -v ON_ERROR_STOP=1 -U cc_dev -d cc_dev
+
+This fixture refuses to execute unless it is in the cc_dev database under
+the cc_dev role, exactly one registered admin exists, and no other real-mail
+accounts exist. It inserts a DISABLED demo@example.invalid account with no
+IMAP hostname/password and six harmless, idempotent fake emails.
+
+Activate the "Attention Triage (development)" plugin for your user under
+Settings > Plugins. This makes the dashboard visible but does NOT enable any
+mailbox for automatic classification (per-account activation remains OFF).
+Refresh only the development browser tab if necessary.
+
+The Needs Attention dashboard should show four synthetic entries:
+- Security alert (HIGH): mark Expected, then Undo.
+- Customer enquiry (HIGH): mark Resolved, then Undo.
+- Payment issue (MEDIUM).
+- AI failed to classify (NEEDS_REVIEW).
+
+It should HIDE the fifth item (newsletter marked NOISE) and the sixth item
+(security alert already acknowledged as EXPECTED).
+
+This checks actual PostgreSQL read/acknowledge SQL and dashboard behaviour;
+it does not test real IMAP, AI billing or autonomous mail ingestion.
+
+## Shutdown
+
+Stop ONLY the isolated development stack, keeping its separate database:
+
+    docker compose -p mailflow-cc-dev --env-file .env.cc-dev -f docker-compose.cc-dev.yml down
+
+Do NOT add -v (volume deletion) and do NOT run these commands inside the
+existing mailflow-lab directory.
+
+## Release gate
+
+Do not merge or deploy this development code over the existing working
+MailFlow. Remaining requirements before real mailbox activation:
+- Recovery for moved-by-rule and unusually old-dated new mail;
+- Safe per-account opt-in with server-issued activation timestamp;
+- Real PostgreSQL tests of claim, lease, settlement and retry logic;
+- Provider billing/usage controls and operational monitoring.
