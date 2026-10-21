@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { attentionCounts, visibleAttentionItems, attentionStateLabel } from './attentionView.js';
+import { attentionCounts, visibleAttentionItems, attentionStateLabel, canAcknowledgeAttentionItem } from './attentionView.js';
 
 const important = { id: 'a', attention: 'YES', priority: 'HIGH', jobStatus: 'DONE' };
 const medium = { id: 'b', attention: 'YES', priority: 'MEDIUM', jobStatus: 'DONE' };
@@ -30,4 +30,16 @@ test('ignores malformed response shapes rather than crashing the dashboard', () 
   assert.deepEqual(visibleAttentionItems(null, 'HIGH'), []);
   assert.deepEqual(visibleAttentionItems([{ attention: 'REVIEW' }, null], 'REVIEW'),
     [{ attention: 'REVIEW' }]);
+});
+
+
+test('only classified or manually-reviewable messages have owner actions', () => {
+  assert.equal(canAcknowledgeAttentionItem({ jobStatus: 'DONE', attention: 'YES' }), true);
+  assert.equal(canAcknowledgeAttentionItem({ jobStatus: 'DONE', attention: 'REVIEW' }), true);
+  assert.equal(canAcknowledgeAttentionItem({ jobStatus: 'NEEDS_REVIEW', attention: 'REVIEW' }), true);
+  for (const status of ['QUEUED', 'PROCESSING', 'RETRY']) {
+    assert.equal(canAcknowledgeAttentionItem({ jobStatus: status, attention: 'REVIEW' }), false);
+  }
+  assert.equal(canAcknowledgeAttentionItem({ jobStatus: 'DONE', attention: 'NO' }), false);
+  assert.equal(canAcknowledgeAttentionItem(null), false);
 });
