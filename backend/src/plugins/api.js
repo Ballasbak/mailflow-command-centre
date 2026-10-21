@@ -65,6 +65,10 @@ export { enqueuePluginMessageIds } from '../services/pluginMessageQueue.js';
 export { claimNextPluginMessage, settlePluginMessage } from '../services/pluginMessageWorker.js';
 // Conservative recovery for inbox arrivals missing an initial queue annotation.
 export { recoverMissingPluginMessages } from '../services/pluginMessageRecovery.js';
+// Narrow, ownership-enforcing read-only attention feed; no message bodies or raw SQL access.
+export { listAttentionItems } from '../services/attentionRead.js';
+// Shared identifier checks for strict plugin input validation.
+export { isUuid } from '../services/pluginMessageIdentifiers.js';
 
 // ── Per-plugin storage ────────────────────────────────────────────────────────
 // Generic per-plugin key/value + blob storage (the plugin_data table), owner-scoped and cascade-
