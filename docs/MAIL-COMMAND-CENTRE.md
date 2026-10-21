@@ -42,11 +42,11 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
 - The hook makes **no AI calls**, no changes to message read state and no IMAP writes.
 - All activation gates are OFF by default. There is no UI or per-account enable
   route yet, so users cannot activate processing in this build.
-- **Known incomplete failure mode:** an enqueue database error is logged without
-  changing the user's email, but there is no durable reconciliation scan to
-  re-discover that message yet. Do NOT enable for live use until recovery is built.
+- **Recovery limitation:** a queue-write error is logged without changing mail.
+  Phase 2B3 can now recover inbox messages, but moved-by-rule and old-dated
+  arrivals still need coverage before unattended live use.
 
-## Phase 2B2 — AI background worker (implemented, tests pending)
+## Phase 2B2 — AI background worker (59 focused tests passed)
 
 - MailFlow's existing per-account plugin tick checks both activation gates before
   scheduling. On eligible connected accounts it runs once per minute.
@@ -59,23 +59,40 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
   become `NEEDS_REVIEW`, **never** `ATTENTION: NO`.
 - Classification only stores metadata in the plugin annotation. No message
   movement, reading flags, sending or deletion. Processing is opt-in and OFF.
-- The queue still needs a recovery scan for failures at the *initial enqueue*
-  stage, and activation controls do not yet exist. **Do not turn it on with real
-  mail or deploy it over the local v3.8 lab** until those are addressed.
+- The recovery scan remains conservative, and activation controls do not
+  exist yet. **Do not turn this on with real mail or deploy over the existing
+  v3.8 lab** until all safety gaps are addressed.
 - This is at-least-once AI processing after a crash; duplicate provider calls
   can occur during lease recovery, but the lease prevents stale result writes.
 
+## Phase 2B3 — conservative incoming-email recovery (implemented, tests pending)
+
+- New messages whose initial queue write failed can be found using
+  `messages.synced_at` and the absence of an Attention Triage annotation.
+- Recovery is scoped to an account, the INBOX, a server-issued activation
+  timestamp, and a 7-day lookback on the original email Date header.
+- Each reconciliation queues at most 25 messages per tick with
+  `FOR UPDATE SKIP LOCKED`, and leaves existing annotations untouched.
+- Missing, malformed, noncanonical or future activation timestamps prevent
+  both ingestion and worker activation. No activation controls exist yet.
+- **Remaining gaps:** messages moved from INBOX by rules before failed
+  enqueue, or newly delivered messages with Date headers older than seven
+  days, can be missed. These cases need additional handling or visible
+  manual review before unattended use. This is not 100% delivery assurance.
+- A future activation route must record the starting timestamp server-side
+  only after verifying an initial mailbox sync.
+
 ## Next development slices (not yet implemented)
 
-1. Build initial enqueue reconciliation, bounded to new mail after a recorded
-   per-account activation baseline. Prove no old-mail bulk reprocessing.
-2. Add authenticated per-account activation controls and a read-only API and
-   `Needs Attention` dashboard with owner OPEN / REVIEW / RESOLVED / EXPECTED states.
-3. Test with a separate PostgreSQL integration environment and isolated Docker
-   development instance, with no shared credentials, ports or mail volumes.
-4. Only after owner approval: turn on one mailbox, verify real classifications,
-   monitor errors and limits, then add further accounts and alerts.
-
+1. Resolve moved-by-rule and old-dated recovery gaps without bulk
+   classifying the historical mailbox.
+2. Add authenticated per-account opt-in capturing the baseline server-side
+   and a reliable immediate disable mechanism.
+3. Add owner-scoped read-only APIs and a Needs Attention dashboard with
+   OPEN / REVIEW / RESOLVED / EXPECTED acknowledgements.
+4. Test SQL against real isolated PostgreSQL and a separate Docker dev
+   instance, without reusing lab volumes, credentials or ports.
+5. Activate one mailbox only after owner approval, then expand carefully.
 ## Safety rules
 
 - Never send, reply, delete, mark read, move, archive, or unsubscribe automatically.
@@ -94,5 +111,5 @@ When dependencies are installed in the development checkout:
 cd C:\Users\fnico\Projects\mailflow-command-centre\backend
 npm ci
 npm run lint:plugins
-npm test -- src/plugins/attention-triage/policy.test.js src/plugins/attention-triage/classify.test.js src/services/pluginAi.test.js src/services/pluginMessageQueue.test.js src/services/pluginMessageWorker.test.js src/plugins/attention-triage/ingest.test.js src/plugins/attention-triage/worker.test.js src/plugins/loadPlugins.test.js
+npm test -- src/plugins/attention-triage/policy.test.js src/plugins/attention-triage/classify.test.js src/services/pluginAi.test.js src/services/pluginMessageQueue.test.js src/services/pluginMessageRecovery.test.js src/services/pluginMessageWorker.test.js src/plugins/attention-triage/ingest.test.js src/plugins/attention-triage/baseline.test.js src/plugins/attention-triage/reconcile.test.js src/plugins/attention-triage/worker.test.js src/plugins/loadPlugins.test.js
 ```
