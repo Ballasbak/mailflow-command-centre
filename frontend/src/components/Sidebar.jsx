@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import AccountMark from './AccountMark.jsx';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../store/index.js';
+import { PluginSlot } from '../plugins/PluginSlot.jsx';
 import { unreadBadge } from '../utils/unreadBadge.js';
 import { api } from '../utils/api.js';
 import { signOut } from '../utils/signOut.js';
@@ -929,6 +930,9 @@ export default function Sidebar() {
             onClick={() => setSelectedAccount(null, 'INBOX')}
           />
         )}
+
+        {/* Generic extension point for activated plugin navigation. */}
+        <PluginSlot name="sidebar-nav" ctx={{ collapsed: sidebarCollapsed }} />
 
         {/* Snoozed (#269): every account's snoozed mail in one place, soonest back first. Shown
             while something is snoozed, and while it is open, so unsnoozing the last message does
