@@ -123,7 +123,9 @@ describe('background Attention Triage tick', () => {
   it('uses a single flight across accounts; releases it on completion', async () => {
     const d = deps();
     let release;
-    d.classify.mockImplementation(() => new Promise(resolve => { release = resolve; }));
+    // Hold only the first AI call. The second must be allowed to complete
+    // normally after the first releases the global single-flight lock.
+    d.classify.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
     const first = attentionTriageTick({ account }, d);
     await vi.waitFor(() => expect(d.classify).toHaveBeenCalledOnce());
     // A second tick must not claim a second message while the model is busy.
@@ -134,6 +136,8 @@ describe('background Attention Triage tick', () => {
     await first;
     await attentionTriageTick({ account: { id: B, user_id: USER } }, d);
     expect(d.claim).toHaveBeenCalledTimes(2);
+    expect(d.classify).toHaveBeenCalledTimes(2);
+    expect(d.settle).toHaveBeenCalledTimes(2);
   });
 
   it('does not process an account with no verified owner', async () => {
