@@ -126,6 +126,21 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
   items, not for queued/processing/retrying messages.
 - The new backend and frontend tests, along with frontend production build,
   must pass before this milestone is closed.
+## Phase 2D — isolated local development lab (prepared, not started)
+
+- A dedicated docker-compose.cc-dev.yml builds current fork source and
+  binds only the frontend at 127.0.0.1:8081, away from the existing
+  localhost:8080 application (which would otherwise share browser cookies
+  if both used localhost). PostgreSQL, Redis and application services belong
+  exclusively to the mailflow-cc-dev Compose project.
+- scripts/prepare-attention-dev.mjs generates unique secrets locally into
+  .env.cc-dev and never prints them. Git and Docker contexts exclude this file.
+- scripts/seed-attention-dev.sql adds only idempotent synthetic data to cc_dev
+  and refuses all other DB names/users and pre-existing real-mail accounts.
+- The synthetic test account is disabled with no IMAP transport or credentials.
+- Full instructions: docs/ATTENTION-ISOLATED-LAB.md.
+- The owner has NOT yet started this new development instance. No live MailFlow
+  database, image, SMTP/IMAP setting or container has been touched.
 ## Next development slices (not yet implemented)
 
 1. Resolve moved-by-rule and old-dated recovery gaps without bulk
