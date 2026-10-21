@@ -63,6 +63,8 @@ export { completePluginAiText } from '../services/pluginAi.js';
 export { enqueuePluginMessageIds } from '../services/pluginMessageQueue.js';
 // Lease-claimed, account-scoped AI queue operations; no raw database handle for plugins.
 export { claimNextPluginMessage, settlePluginMessage } from '../services/pluginMessageWorker.js';
+// Conservative recovery for inbox arrivals missing an initial queue annotation.
+export { recoverMissingPluginMessages } from '../services/pluginMessageRecovery.js';
 
 // ── Per-plugin storage ────────────────────────────────────────────────────────
 // Generic per-plugin key/value + blob storage (the plugin_data table), owner-scoped and cascade-
