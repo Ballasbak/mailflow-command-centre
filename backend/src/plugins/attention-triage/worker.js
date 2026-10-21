@@ -3,6 +3,7 @@
 import { claimNextPluginMessage, settlePluginMessage, logger } from '../api.js';
 import { classifyAttentionEmail } from './classify.js';
 import { triageEnabledForAccount } from './ingest.js';
+import { reconcileUnqueuedInbox } from './reconcile.js';
 
 const PLUGIN_ID = 'attention-triage';
 const MAX_AI_ATTEMPTS = 3;
@@ -11,6 +12,7 @@ let activeCount = 0;
 
 export async function attentionTriageTick({ account } = {}, {
   enabled = triageEnabledForAccount,
+  reconcile = reconcileUnqueuedInbox,
   claim = claimNextPluginMessage,
   classify = classifyAttentionEmail,
   settle = settlePluginMessage,
@@ -26,6 +28,15 @@ export async function attentionTriageTick({ account } = {}, {
   activeAccounts.add(account.id);
   activeCount++;
   try {
+    // This background step may repair a failed initial queue write. A recovery
+    // query failure must not block work that was already durably queued.
+    try {
+      await reconcile({ account });
+    } catch {
+      warn('Attention Triage: inbox reconciliation failed; queued work remains available');
+    }
+    // The owner may have switched off the plugin while reconciliation ran.
+    if (!await enabled({ account })) return;
     const job = await claim({ accountId: account.id, pluginId: PLUGIN_ID });
     if (!job) return;
     // A plugin switched off between its timer gate and claim must not run AI.
