@@ -95,7 +95,8 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
 - Maximum 50 results per request, read-only, with private/no-store caching.
 - The GET feed remains read-only. Owner acknowledgement is a separate PATCH
   capability (Phase 2C3) that changes only plugin metadata.
-- Unit tests are green; real PostgreSQL tests remain outstanding.
+- Unit tests are green; real PostgreSQL read and acknowledgement behaviour
+  passed with synthetic mail on the isolated development stack.
 ## Phase 2C2 — Needs Attention dashboard (5 frontend tests, lint, build passed)
 
 - An activated-plugin-only `Needs Attention` nav entry opens its own modal,
@@ -110,7 +111,7 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
 - The dashboard was read-only until Phase 2C3 introduced controlled owner
   acknowledgements. No message read/move/delete flags are changed.
 - The frontend selector unit tests, lint and Vite build have passed.
-## Phase 2C3 — explicit Expected / Resolved controls (implemented, tests pending)
+## Phase 2C3 — explicit Expected / Resolved controls (PASS — synthetic browser exercise)
 
 - `PATCH /api/attention/items/:id/status` accepts only `OPEN`, `EXPECTED`
   and `RESOLVED` from the signed-in, activated plugin owner.
@@ -124,9 +125,10 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
   failed saves remain visible with an error. Undo reopens the item.
 - Action buttons appear only for completed classifications or `NEEDS_REVIEW`
   items, not for queued/processing/retrying messages.
-- The new backend and frontend tests, along with frontend production build,
-  must pass before this milestone is closed.
-## Phase 2D — isolated local development lab (prepared, not started)
+- Targeted unit tests (109 backend and 6 frontend), both lint checks and the
+  Vite build passed. The owner verified real PostgreSQL-backed Expected,
+  Resolved, Undo and persistence with synthetic messages.
+## Phase 2D — isolated local development lab (PASS — synthetic browser rehearsal)
 
 - A dedicated docker-compose.cc-dev.yml builds current fork source and
   binds only the frontend at 127.0.0.1:8081, away from the existing
@@ -139,9 +141,12 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
   and refuses all other DB names/users and pre-existing real-mail accounts.
 - The synthetic test account is disabled with no IMAP transport or credentials.
 - Full instructions: docs/ATTENTION-ISOLATED-LAB.md.
-- The owner has NOT yet started this new development instance. No live MailFlow
-  database, image, SMTP/IMAP setting or container has been touched.
-## Phase 2E — isolated real-PostgreSQL queue rehearsal (prepared, not executed)
+- The owner started the dedicated development stack and verified four healthy
+  services. Synthetic email/dashboard exercises passed: 4 attention items,
+  2 filtered out, Expected / Resolved / Undo and persistence. Open Email left
+  the original synthetic message unread and ownerStatus=OPEN. This did not
+  change the separate original working MailFlow installation.
+## Phase 2E — isolated real-PostgreSQL queue rehearsal (PASS — 21 October 2026)
 
 - The synthetic dashboard/acknowledgement/Open Email exercise has passed.
   Opening the fictional customer email left is_read=false, ownerStatus=OPEN.
@@ -153,8 +158,13 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
   multiple development users, or missing explicit CC_DEV_SQL_TEST=1 opt-in.
 - It does not call an AI provider or connect IMAP/SMTP. Fake model output
   exercises the strict local attention parser only.
-- This is not a full real-AI end-to-end integration test. The integration
-  rehearsal has not yet run; do not count it as passed until owner output.
+- Owner execution returned Guard passed, PASS 1/6 through PASS 6/6, and
+  Cleanup: removed only 3 temporary synthetic test rows. All six real-SQL
+  checks passed: enqueue and deduplication, leases and stale-write protection,
+  retry limits, missing-annotation recovery, simulated classification, and
+  owner acknowledgement/Undo preservation.
+- The test used deterministic FAKE model output. It did not call a real AI
+  provider or connect an email account; do not treat it as live AI proof.
 - Runbook: docs/ATTENTION-ISOLATED-LAB.md (Phase D).
 ## Next development slices (not yet implemented)
 
@@ -162,8 +172,9 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
    classifying the historical mailbox.
 2. Add authenticated per-account opt-in capturing the baseline server-side
    and a reliable immediate disable mechanism.
-3. Test the new acknowledgement flow, then run end-to-end SQL checks
-   against isolated PostgreSQL and a separate Docker development instance.
+3. Test the entire processing path with deterministic stubbed model replies
+   after explicit per-account activation safeguards are built, then verify
+   provider limits before authorizing any real AI use.
 4. Add a durable per-action audit log before unattended live use.
 5. Activate one mailbox only after owner approval, then expand carefully.
 ### Frontend checks (Node 22, isolated environment)
