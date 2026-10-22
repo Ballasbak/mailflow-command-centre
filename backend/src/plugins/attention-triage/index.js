@@ -8,7 +8,7 @@ import attentionRoutes from './routes.js';
 export const attentionTriagePlugin = {
   id: 'attention-triage',
   name: 'Attention Triage (development)',
-  version: '0.6.0',
+  version: '0.7.0',
   tier: 1,
   router: { base: '/api/attention', handler: attentionRoutes },
   hooks: {
