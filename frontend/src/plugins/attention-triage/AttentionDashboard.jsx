@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../utils/api.js';
 import { useStore } from '../../store/index.js';
 import { openDeepLinkMessage } from '../../utils/gtd.js';
+import AttentionMonitoringControls from './AttentionMonitoringControls.jsx';
 import {
   ATTENTION_FILTERS, attentionCounts, attentionStateLabel, canAcknowledgeAttentionItem, visibleAttentionItems,
 } from './attentionView.js';
@@ -248,6 +249,8 @@ export default function AttentionDashboard({ onClose }) {
               : ''}
           </span>
         </div>
+
+        <AttentionMonitoringControls />
 
         <div style={{ padding: '11px 20px 10px', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {ATTENTION_FILTERS.map(name => {
