@@ -166,12 +166,30 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
 - The test used deterministic FAKE model output. It did not call a real AI
   provider or connect an email account; do not treat it as live AI proof.
 - Runbook: docs/ATTENTION-ISOLATED-LAB.md (Phase D).
+## Phase 2F1 — owner-scoped mailbox controls (implemented, tests pending)
+
+- Introduces a hard-coded FALSE release fuse for automated inbox ingestion and
+  background AI ticks. An old plugin configuration or accidental environment
+  variable cannot turn on automatic classification in this revision.
+- An authenticated owner-only GET /api/attention/accounts lists each user's
+  mailbox safely, distinguishes recorded opt-in from effective monitoring,
+  and always reports canEnable=false, monitoringEnabled=false.
+- An authenticated PATCH /api/attention/accounts/:id/automation accepts
+  only enabled=false. All requests with enabled=true return HTTP 423 (locked).
+- Disable is one account-owner-filtered SQL operation that also deletes the
+  old activatedAt baseline. It does not disconnect or modify the mailbox.
+- A collapsed 'Monitoring controls' section in the dashboard shows account
+  status and a Disable button for any previously recorded opt-in.
+- Ingest additionally refuses disabled and non-IMAP accounts.
+- IMPORTANT: this is **staging**, not approval to activate an email account.
+  The activation path remains deliberately unavailable until initial backfill,
+  moved-by-rule/old-dated recovery and AI usage limits are addressed.
 ## Next development slices (not yet implemented)
 
 1. Resolve moved-by-rule and old-dated recovery gaps without bulk
    classifying the historical mailbox.
-2. Add authenticated per-account opt-in capturing the baseline server-side
-   and a reliable immediate disable mechanism.
+2. Complete the account activation path ONLY after the remaining release
+   safeguards pass. OFF-only controls are now implemented in Phase 2F1.
 3. Test the entire processing path with deterministic stubbed model replies
    after explicit per-account activation safeguards are built, then verify
    provider limits before authorizing any real AI use.
