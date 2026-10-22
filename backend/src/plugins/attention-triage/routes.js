@@ -1,7 +1,8 @@
 // Authenticated, read-only Attention Triage API.
 // Frontend clients never access the raw email database or provider credentials.
 import { Router } from 'express';
-import { requireAuth, isPluginActivated, listAttentionItems, acknowledgeAttentionItem, isUuid } from '../api.js';
+import { requireAuth, isPluginActivated, listAttentionItems, acknowledgeAttentionItem,
+  listOwnedAttentionAccounts, disableOwnedAttentionAccount, isUuid } from '../api.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -54,6 +55,47 @@ router.patch('/items/:id/status', async (req, res) => {
     return res.json({ ok: true, id: messageId, ownerStatus: status });
   } catch {
     return res.status(503).json({ error: 'Attention acknowledgement is temporarily unavailable' });
+  }
+});
+
+// GET /api/attention/accounts
+// The read-only dashboard toggle does NOT enable automated mailbox processing.
+router.get('/accounts', async (req, res) => {
+  try {
+    if (!await isPluginActivated(req.session?.userId, 'attention-triage')) {
+      return res.status(403).json({ error: 'Attention Triage is not activated' });
+    }
+    const accounts = await listOwnedAttentionAccounts({ userId: req.session.userId });
+    res.set('Cache-Control', 'private, no-store');
+    return res.json({ accounts, automationReleased: false });
+  } catch {
+    return res.status(503).json({ error: 'Attention account controls are temporarily unavailable' });
+  }
+});
+
+// PATCH /api/attention/accounts/:id/automation { enabled: false }
+// This phase supports EMERGENCY OFF only. Never accept a client-provided
+// activation baseline, never turn on a worker, and never trigger IMAP reconnect.
+router.patch('/accounts/:id/automation', async (req, res) => {
+  const accountId = req.params?.id;
+  const enabled = req.body?.enabled;
+  if (!isUuid(accountId) || typeof enabled !== 'boolean') {
+    return res.status(400).json({ error: 'Invalid attention account request' });
+  }
+  if (enabled) {
+    return res.status(423).json({
+      error: 'Automatic classification is locked until the release safeguards pass',
+    });
+  }
+  try {
+    const disabled = await disableOwnedAttentionAccount({
+      userId: req.session.userId, accountId,
+    });
+    if (!disabled) return res.status(404).json({ error: 'Attention account not found' });
+    res.set('Cache-Control', 'private, no-store');
+    return res.json({ ok: true, accountId, enabled: false });
+  } catch {
+    return res.status(503).json({ error: 'Attention account control is temporarily unavailable' });
   }
 });
 
