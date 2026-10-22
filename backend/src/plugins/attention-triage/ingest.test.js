@@ -7,6 +7,8 @@ vi.mock('../api.js', () => ({
   logger: { warn: vi.fn() },
 }));
 import { enqueuePluginMessageIds, getAccountConfig, isPluginActivatedForAccount, logger } from '../api.js';
+vi.mock('./release.js', () => ({ attentionAutomationReleased: vi.fn() }));
+import { attentionAutomationReleased } from './release.js';
 import { inboxIngest, selectAttentionCandidates, triageEnabledForAccount } from './ingest.js';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -17,6 +19,7 @@ const account = { id: A, user_id: '44444444-4444-4444-8444-444444444444' };
 describe('Attention Triage inbox ingest', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    attentionAutomationReleased.mockReturnValue(true);
     isPluginActivatedForAccount.mockResolvedValue(false);
     getAccountConfig.mockResolvedValue({});
     enqueuePluginMessageIds.mockResolvedValue([M1]);
@@ -39,6 +42,17 @@ describe('Attention Triage inbox ingest', () => {
   it('blocks automation without a recorded activation baseline', async () => {
     isPluginActivatedForAccount.mockResolvedValue(true);
     getAccountConfig.mockResolvedValue({ enabled: true });
+    expect(await triageEnabledForAccount({ account })).toBe(false);
+    await inboxIngest({ account, newInboxIds: [M1] });
+    expect(enqueuePluginMessageIds).not.toHaveBeenCalled();
+  });
+
+  it('cannot ingest even with valid account consent while the release fuse is closed', async () => {
+    isPluginActivatedForAccount.mockResolvedValue(true);
+    getAccountConfig.mockResolvedValue({
+      enabled: true, activatedAt: '2026-10-20T10:00:00.000Z',
+    });
+    attentionAutomationReleased.mockReturnValue(false);
     expect(await triageEnabledForAccount({ account })).toBe(false);
     await inboxIngest({ account, newInboxIds: [M1] });
     expect(enqueuePluginMessageIds).not.toHaveBeenCalled();
