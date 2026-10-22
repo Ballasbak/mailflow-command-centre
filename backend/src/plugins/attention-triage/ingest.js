@@ -18,7 +18,8 @@ export function selectAttentionCandidates(newInboxIds, deletedIds) {
 // Activation requires BOTH MailFlow's per-user plugin toggle AND the per-account
 // opt-in. The missing config defaults to OFF. Any failed gate is OFF, not ON.
 export async function triageEnabledForAccount({ account } = {}) {
-  if (!account?.id || !account?.user_id) return false;
+  if (!account?.id || !account?.user_id || account.enabled !== true ||
+      account.protocol !== 'imap') return false;
   try {
     if (!await isPluginActivatedForAccount(PLUGIN_ID, account.id)) return false;
     const config = await getAccountConfig(PLUGIN_ID, account.id);
