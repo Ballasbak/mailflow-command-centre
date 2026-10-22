@@ -67,6 +67,8 @@ export { claimNextPluginMessage, settlePluginMessage } from '../services/pluginM
 export { recoverMissingPluginMessages } from '../services/pluginMessageRecovery.js';
 // Narrow, ownership-enforcing read-only attention feed; no message bodies or raw SQL access.
 export { listAttentionItems } from '../services/attentionRead.js';
+// Owner-scoped mailbox monitoring status and an atomic, baseline-clearing OFF switch.
+export { listOwnedAttentionAccounts, disableOwnedAttentionAccount } from '../services/attentionAccountControl.js';
 // Only allows the signed-in owner to record an explicit review acknowledgement.
 export { acknowledgeAttentionItem } from '../services/attentionAcknowledge.js';
 // Shared identifier checks for strict plugin input validation.
