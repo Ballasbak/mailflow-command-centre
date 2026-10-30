@@ -17,4 +17,19 @@ describe('loadBundledPlugins', () => {
     expect(gtd.router.base).toBe('/api/gtd');
     expect(typeof gtd.router.handler).toBe('function');
   });
+
+  it('registers the default-off Attention Triage hook and background worker', () => {
+    const r = createPluginRegistry();
+    loadBundledPlugins(r);
+    const plugin = r.get('attention-triage');
+    expect(plugin?.tier).toBe(1);
+    expect(plugin?.version).toBe('0.7.0');
+    expect(plugin?.router?.base).toBe('/api/attention');
+    expect(typeof plugin?.router?.handler).toBe('function');
+    expect(typeof plugin?.hooks?.inboxIngest?.handler).toBe('function');
+    expect(typeof plugin?.hooks?.inboxIngest?.isActive).toBe('function');
+    expect(plugin?.sync?.intervalMs).toBe(60000);
+    expect(typeof plugin?.sync?.isActive).toBe('function');
+    expect(typeof plugin?.sync?.tick).toBe('function');
+  });
 });

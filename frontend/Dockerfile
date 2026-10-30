@@ -45,7 +45,12 @@ COPY frontend/detect-resolver.sh /docker-entrypoint.d/16-detect-resolver.sh
 COPY frontend/set-backend.sh /docker-entrypoint.d/17-set-backend.sh
 COPY frontend/generate-cert.sh /docker-entrypoint.d/10-generate-cert.sh
 COPY frontend/set-tls.sh /docker-entrypoint.d/18-set-tls.sh
-RUN chmod +x /docker-entrypoint.d/10-generate-cert.sh /docker-entrypoint.d/16-detect-resolver.sh /docker-entrypoint.d/17-set-backend.sh /docker-entrypoint.d/18-set-tls.sh
+# Git on Windows can check out .sh files with CRLF even if upstream stores LF.
+# nginx runs these as executables via their #!/bin/sh shebang; a trailing CR
+# turns the interpreter into /bin/sh^M and reports a misleading "not found".
+# Normalize the four copied files in-image, independently of host Git settings.
+RUN sed -i 's/\r$//' /docker-entrypoint.d/10-generate-cert.sh /docker-entrypoint.d/16-detect-resolver.sh /docker-entrypoint.d/17-set-backend.sh /docker-entrypoint.d/18-set-tls.sh && \
+    chmod +x /docker-entrypoint.d/10-generate-cert.sh /docker-entrypoint.d/16-detect-resolver.sh /docker-entrypoint.d/17-set-backend.sh /docker-entrypoint.d/18-set-tls.sh
 
 EXPOSE 80 443
 

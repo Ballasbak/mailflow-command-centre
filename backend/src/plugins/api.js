@@ -57,6 +57,22 @@ export const broadcast = (payload, userId) => getMailEngine().broadcast(payload,
 // provider is off / the summarize feature is disabled / the user's AI access is off; both take
 // the user, and summarizeMessage checks it itself). No access to keys or the provider itself.
 export { summarizeMessage, summarizeAvailable } from '../services/summarize.js';
+// Bounded completion for a plugin-owned AI classification; enforces user AI access.
+export { completePluginAiText } from '../services/pluginAi.js';
+// Batched, idempotent metadata-only enqueue for a particular account and plugin.
+export { enqueuePluginMessageIds } from '../services/pluginMessageQueue.js';
+// Lease-claimed, account-scoped AI queue operations; no raw database handle for plugins.
+export { claimNextPluginMessage, settlePluginMessage } from '../services/pluginMessageWorker.js';
+// Conservative recovery for inbox arrivals missing an initial queue annotation.
+export { recoverMissingPluginMessages } from '../services/pluginMessageRecovery.js';
+// Narrow, ownership-enforcing read-only attention feed; no message bodies or raw SQL access.
+export { listAttentionItems } from '../services/attentionRead.js';
+// Owner-scoped mailbox monitoring status and an atomic, baseline-clearing OFF switch.
+export { listOwnedAttentionAccounts, disableOwnedAttentionAccount } from '../services/attentionAccountControl.js';
+// Only allows the signed-in owner to record an explicit review acknowledgement.
+export { acknowledgeAttentionItem } from '../services/attentionAcknowledge.js';
+// Shared identifier checks for strict plugin input validation.
+export { isUuid } from '../services/pluginMessageIdentifiers.js';
 
 // ── Per-plugin storage ────────────────────────────────────────────────────────
 // Generic per-plugin key/value + blob storage (the plugin_data table), owner-scoped and cascade-

@@ -5,6 +5,9 @@
 # Local docker compose overrides (e.g. temporary LOG_LEVEL=debug for a soak) — never committed
 docker-compose.override.yml
 
+# Local Mail Command Centre development secrets (NEVER commit)
+/.env.cc-dev
+/.env.cc-dev.*
 # Dependencies
 node_modules/
 

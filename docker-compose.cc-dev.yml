@@ -1,0 +1,100 @@
+# Isolated Mail Command Centre DEVELOPMENT stack only.
+# Never merge with docker-compose.yml, never reuse the running mailflow-lab.
+# Browser origin 127.0.0.1 differs from localhost (cookies are host-scoped, not port-scoped).
+# Run with: docker compose -p mailflow-cc-dev --env-file .env.cc-dev -f docker-compose.cc-dev.yml up -d --build
+name: mailflow-cc-dev
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: "no"
+    ports:
+      - "127.0.0.1:8081:80"
+    environment:
+      NGINX_TLS: "off"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    networks:
+      - ccdev
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: "no"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      APP_URL: http://127.0.0.1:8081
+      FRONTEND_URL: http://127.0.0.1:8081
+      SESSION_SECRET: ${CC_DEV_SESSION_SECRET:?Generate .env.cc-dev first}
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: cc_dev
+      DB_USER: cc_dev
+      DB_PASSWORD: ${CC_DEV_DB_PASSWORD:?Generate .env.cc-dev first}
+      REDIS_URL: redis://redis:6379
+      ENCRYPTION_KEY: ${CC_DEV_ENCRYPTION_KEY:?Generate .env.cc-dev first}
+      TRUST_PROXY_HOPS: "1"
+      IMAGE_CACHE_DIR: /tmp/ccdev-image-cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks:
+      - ccdev
+
+  postgres:
+    image: postgres:16-alpine
+    restart: "no"
+    environment:
+      POSTGRES_DB: cc_dev
+      POSTGRES_USER: cc_dev
+      POSTGRES_PASSWORD: ${CC_DEV_DB_PASSWORD:?Generate .env.cc-dev first}
+    volumes:
+      - cc_dev_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cc_dev -d cc_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+    networks:
+      - ccdev
+
+  redis:
+    image: redis:7-alpine
+    restart: "no"
+    # No persistent sessions or cache required for the throwaway development stack.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    networks:
+      - ccdev
+
+volumes:
+  cc_dev_pgdata:
+
+networks:
+  ccdev:
+    driver: bridge
