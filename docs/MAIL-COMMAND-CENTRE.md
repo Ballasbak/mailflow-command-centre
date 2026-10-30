@@ -166,7 +166,7 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
 - The test used deterministic FAKE model output. It did not call a real AI
   provider or connect an email account; do not treat it as live AI proof.
 - Runbook: docs/ATTENTION-ISOLATED-LAB.md (Phase D).
-## Phase 2F1 — owner-scoped mailbox controls (implemented, tests pending)
+## Phase 2F1 — owner-scoped mailbox controls (implemented, targeted tests PASS — 30 October 2026)
 
 - Introduces a hard-coded FALSE release fuse for automated inbox ingestion and
   background AI ticks. An old plugin configuration or accidental environment
@@ -181,6 +181,14 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
 - A collapsed 'Monitoring controls' section in the dashboard shows account
   status and a Disable button for any previously recorded opt-in.
 - Ingest additionally refuses disabled and non-IMAP accounts.
+- Verification on 30 October 2026: 60 targeted backend tests across seven
+  files passed, plugin boundary lint passed, all 6 frontend Attention View
+  tests passed, frontend plugin lint passed and production Vite build passed.
+  Both updated 8081 development images were rebuilt and all four development
+  containers reported healthy. HTTP checks: 8080 and 8081 returned 200;
+  unauthenticated Attention account status correctly returned HTTP 401.
+  The release fuse remained hard-coded false inside the running backend.
+  Main 8080 remained version 3.8.0 with one real Gmail account untouched.
 - IMPORTANT: this is **staging**, not approval to activate an email account.
   The activation path remains deliberately unavailable until initial backfill,
   moved-by-rule/old-dated recovery and AI usage limits are addressed.
