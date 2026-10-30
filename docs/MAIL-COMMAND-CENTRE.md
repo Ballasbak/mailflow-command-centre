@@ -192,6 +192,35 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
 - IMPORTANT: this is **staging**, not approval to activate an email account.
   The activation path remains deliberately unavailable until initial backfill,
   moved-by-rule/old-dated recovery and AI usage limits are addressed.
+## Phase 2F2 — durable owner-decision audit (PASS — 30 October 2026)
+
+- Migration `0069_attention_action_audit.sql` adds a metadata-only audit table
+  for owner actions: actor, account ID, message ID, previous/new status and time.
+  The table deliberately stores **no email bodies, subjects, sender addresses or keys**.
+- The existing Expected / Resolved / Undo endpoint now writes a status update and
+  audit event as one atomic PostgreSQL statement. If recording fails, both fail.
+  Ownership, deleted-message and actionable-message checks remain enforced.
+- An application-level append-only history is retained if a message is expunged;
+  deleting a user cascades to delete their audit records. This is not a tamper-proof
+  cryptographic log or a complete audit of automatic AI decisions.
+- `backend/src/dev/attentionAuditPostgresCheck.js` provides a guarded offline
+  test against the isolated cc_dev database only, with random temporary synthetic
+  rows removed on completion.
+- The existing queue rehearsal now verifies audit status transitions and cleans
+  only its own temporary audit events. No real mailbox is connected.
+- **Verified against isolated PostgreSQL:** migration 0069 applied, guarded
+  audit rehearsal PASS (Expected, Undo, wrong-owner denial, noise exclusion,
+  message content/read flag preservation); original queue rehearsal PASS 6/6
+  with audited owner actions. All temporary audit/message rows cleaned up.
+  A separate Node 22 regression run passed 60 focused tests and lint.
+- Run audit test only inside the private cc_dev Docker project:
+
+  ```powershell
+  docker compose -p mailflow-cc-dev --env-file .env.cc-dev -f docker-compose.cc-dev.yml run --rm -T --no-deps -e CC_DEV_AUDIT_TEST=1 backend node src/dev/attentionAuditPostgresCheck.js
+  ```
+- Automatic classification and email sending remain **hard-disabled** by the
+  existing release fuse. This is not approval for live deployment.
+
 ## Next development slices (not yet implemented)
 
 1. Resolve moved-by-rule and old-dated recovery gaps without bulk
@@ -201,7 +230,8 @@ The existing local MailFlow lab on port **8080** remains the working baseline.
 3. Test the entire processing path with deterministic stubbed model replies
    after explicit per-account activation safeguards are built, then verify
    provider limits before authorizing any real AI use.
-4. Add a durable per-action audit log before unattended live use.
+4. Extend the owner-action audit to AI processing, failed jobs and future outgoing
+   replies; add a private owner-visible history before unattended live use.
 5. Activate one mailbox only after owner approval, then expand carefully.
 ### Frontend checks (Node 22, isolated environment)
 

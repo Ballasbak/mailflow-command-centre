@@ -29,8 +29,8 @@ describe('owner-controlled attention acknowledgement', () => {
     expect(await acknowledgeAttentionItem(valid)).toBe(true);
     const [sql, params] = query.mock.calls[0];
     expect(sql).toContain('UPDATE messages AS m');
-    expect(sql).toContain('FROM email_accounts AS a');
-    expect(sql).toContain('m.account_id = a.id');
+    expect(sql).toContain('JOIN email_accounts AS a');
+    expect(sql).toContain('a.id = m.account_id');
     expect(sql).toContain('a.user_id = $1::uuid');
     expect(sql).toContain('m.is_deleted = false');
     expect(sql).toContain("->> 'status') = 'DONE'");
@@ -38,6 +38,11 @@ describe('owner-controlled attention acknowledgement', () => {
     expect(sql).toContain("IN ('YES', 'REVIEW')");
     expect(sql).toContain("jsonb_build_object('ownerStatus', $3::text");
     expect(sql).toContain('ownerUpdatedBy');
+    expect(sql).toContain('INSERT INTO attention_action_audit');
+    expect(sql).toContain('FOR UPDATE OF m');
+    expect(sql).toContain('FROM changed c JOIN eligible e');
+    expect(sql).toContain('previous_status, new_status, occurred_at');
+    expect(sql).toContain('RETURNING message_id AS id');
     expect(sql).toContain('COALESCE(m.plugin_annotations -> $5');
     expect(sql).not.toMatch(/DELETE FROM|SET\s+is_read|SET\s+folder|body_text\s*=|body_html\s*=/i);
     expect(params).toEqual([USER, MESSAGE, 'EXPECTED', TIME.toISOString(), 'attention-triage']);

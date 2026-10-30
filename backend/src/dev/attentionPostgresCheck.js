@@ -242,6 +242,13 @@ async function rehearsal(userId) {
     userId, messageId: idA, status: 'OPEN', now: at(base, 6000),
   }), true);
   const restored = await annotation(idA);
+  const audit = await query(
+    'SELECT previous_status, new_status FROM attention_action_audit ' +
+    'WHERE account_id = $1::uuid AND message_id = $2::uuid ORDER BY id',
+    [ACCOUNT, idA],
+  );
+  assert.deepEqual(audit.rows.map(row => [row.previous_status, row.new_status]),
+    [['OPEN', 'EXPECTED'], ['EXPECTED', 'OPEN']]);
   assert.equal(restored.ann.ownerStatus, 'OPEN');
   assert.equal(restored.ann.result.attention, 'YES');
   for (const id of [idA, idB, idC]) {
@@ -249,7 +256,7 @@ async function rehearsal(userId) {
     assert.equal(row.is_read, false, 'Triage must not mark emails read');
     assert(row.subject.startsWith(PREFIX), 'Triage must preserve subjects');
   }
-  console.log('PASS 6/6: Expected and Undo preserve message data and read flags');
+  console.log('PASS 6/6: Expected/Undo audited; message content and read flags preserved');
 }
 
 let passed = false;
@@ -264,6 +271,10 @@ try {
 } finally {
   if (guardPassed && created.length > 0) {
     try {
+      await query(
+        'DELETE FROM attention_action_audit WHERE account_id = $1::uuid ' +
+        'AND message_id = ANY($2::uuid[])', [ACCOUNT, created],
+      );
       const result = await query(
         'DELETE FROM messages WHERE account_id = $1::uuid ' +
         "AND id = ANY($2::uuid[]) AND from_email = $3 AND subject LIKE '[CC-DEV-INTEGRATION] %'",
